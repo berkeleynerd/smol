@@ -1,0 +1,13 @@
+{
+  "format": "smol-theme-v1",
+  "id": "sample-xhtml",
+  "name": "Sample XHTML",
+  "version": "0.1.0",
+  "templates": {
+    "index": "templates/index.html.tmpl",
+    "page": "templates/page.html.tmpl"
+  },
+  "css": [
+    "assets/style.css"
+  ]
+}

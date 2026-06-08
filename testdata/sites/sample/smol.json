@@ -1,0 +1,12 @@
+{
+  "format": "smol-site-v1",
+  "title": "Sample",
+  "description": "Sample XHTML fixture.",
+  "language": "en-US",
+  "base_url": "https://example.invalid/sample",
+  "publisher": "Sample",
+  "theme": "sample-xhtml",
+  "output_mode": "flat-xhtml-v1",
+  "sign_key": "",
+  "nav": []
+}

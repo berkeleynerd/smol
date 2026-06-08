@@ -1,0 +1,19 @@
+{
+  "format": "smol-page-v1",
+  "kind": "page",
+  "title": "Article 3",
+  "slug": "article-3",
+  "summary": "",
+  "published_utc": "",
+  "updated_utc": "",
+  "tags": [],
+  "draft": false,
+  "body_format": "markdown-xhtml-v1",
+  "header": [
+    {
+      "level": 1,
+      "html": "Article 3"
+    }
+  ],
+  "main_spacer": false
+}

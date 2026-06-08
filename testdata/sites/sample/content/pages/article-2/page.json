@@ -1,0 +1,57 @@
+{
+  "format": "smol-page-v1",
+  "kind": "page",
+  "title": "Article 2",
+  "slug": "article-2",
+  "summary": "",
+  "published_utc": "",
+  "updated_utc": "",
+  "tags": [],
+  "draft": false,
+  "body_format": "markdown-xhtml-v1",
+  "header": [
+    {
+      "level": 1,
+      "html": "Article 2"
+    },
+    {
+      "level": 4,
+      "html": "Generic fixture text"
+    },
+    {
+      "level": 5,
+      "html": "Lorem ipsum dolor sit amet"
+    }
+  ],
+  "main_spacer": true,
+  "toc_columns": [
+    [
+      {
+        "href": "#sample-section",
+        "html": "Sample Section"
+      },
+      {
+        "href": "#sample-details",
+        "html": "Sample Details"
+      },
+      {
+        "href": "#sample-list",
+        "html": "Sample List"
+      }
+    ],
+    [
+      {
+        "href": "#sample-notes",
+        "html": "Sample Notes"
+      },
+      {
+        "href": "#sample-summary",
+        "html": "Sample Summary"
+      },
+      {
+        "href": "#sample-afterword",
+        "html": "Sample Afterword"
+      }
+    ]
+  ]
+}

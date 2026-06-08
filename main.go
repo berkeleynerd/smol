@@ -1,0 +1,200 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+)
+
+const (
+	Version = "0.1.0"
+	Profile = "smol/static-nojs-v1"
+)
+
+type usageError struct {
+	msg string
+}
+
+func (e usageError) Error() string {
+	return e.msg
+}
+
+func main() {
+	os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func Run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		printHelp(stdout)
+		return 0
+	}
+	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
+		printHelp(stdout)
+		return 0
+	}
+
+	var err error
+	switch args[0] {
+	case "init":
+		err = commandInit(args[1:])
+	case "new":
+		err = commandNew(args[1:])
+	case "build":
+		err = commandBuild(args[1:], stdout)
+	default:
+		fmt.Fprintf(stderr, "error: unknown command: %s\n", args[0])
+		return 2
+	}
+
+	if err == nil {
+		return 0
+	}
+	fmt.Fprintf(stderr, "error: %s\n", err)
+	if _, ok := err.(usageError); ok {
+		return 2
+	}
+	return 1
+}
+
+func commandInit(args []string) error {
+	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	starter := fs.String("starter", starterDefault, "starter name")
+	if err := fs.Parse(args); err != nil {
+		return usageError{err.Error()}
+	}
+	if !isValidStarter(*starter) {
+		return usageError{"unknown starter: " + *starter + " (valid: " + validStarterList() + ")"}
+	}
+	if fs.NArg() > 1 {
+		return usageError{"usage: smol init [--starter " + validStarterList() + "] [DIR]"}
+	}
+	dir := "."
+	if fs.NArg() == 1 {
+		dir = fs.Arg(0)
+	}
+	return InitSiteWithStarter(dir, *starter)
+}
+
+func commandNew(args []string) error {
+	if len(args) < 1 {
+		return usageError{"missing content kind"}
+	}
+	if len(args) < 2 {
+		return usageError{"missing slug"}
+	}
+	if len(args) < 3 {
+		return usageError{"missing title"}
+	}
+	kind := args[0]
+	if kind != "page" && kind != "post" {
+		return usageError{"unknown content kind: " + kind}
+	}
+	title := strings.Join(args[2:], " ")
+	siteDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	return NewContent(siteDir, kind, args[1], title)
+}
+
+func commandBuild(args []string, stdout io.Writer) error {
+	if flagsAppearAfterPositionals(args) {
+		return usageError{"options must appear before positional arguments"}
+	}
+
+	fs := flag.NewFlagSet("build", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	out := fs.String("out", "public", "output directory")
+	signKey := fs.String("sign-key", "", "signing key fingerprint")
+	attest := fs.String("attest", "", "attest signer binary")
+	attestedHTML := fs.String("attested-html", "", "attested-html signer binary alias")
+	unsigned := fs.Bool("unsigned", false, "build unsigned HTML even when sign_key is configured")
+	force := fs.Bool("force", false, "remove output directory before build")
+	if err := fs.Parse(args); err != nil {
+		return usageError{err.Error()}
+	}
+	if fs.NArg() > 1 {
+		return usageError{"usage: smol build [options] [SITE_DIR]"}
+	}
+	siteDir := "."
+	if fs.NArg() == 1 {
+		siteDir = fs.Arg(0)
+	}
+	attestPath := *attest
+	if attestPath == "" {
+		attestPath = *attestedHTML
+	}
+	return BuildSite(BuildOptions{
+		SiteDir:       siteDir,
+		OutDir:        *out,
+		SignKey:       *signKey,
+		AttestPath:    attestPath,
+		Unsigned:      *unsigned,
+		Force:         *force,
+		Stdout:        stdout,
+		SignKeySource: flagWasSupplied(args, "sign-key"),
+	})
+}
+
+func flagsAppearAfterPositionals(args []string) bool {
+	seenPositional := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			seenPositional = true
+			continue
+		}
+		if !seenPositional && strings.HasPrefix(arg, "-") {
+			if arg == "--out" || arg == "-out" || arg == "--sign-key" || arg == "-sign-key" || arg == "--attest" || arg == "-attest" || arg == "--attested-html" || arg == "-attested-html" {
+				i++
+			}
+			continue
+		}
+		if seenPositional && strings.HasPrefix(arg, "-") {
+			return true
+		}
+		seenPositional = true
+	}
+	return false
+}
+
+func flagWasSupplied(args []string, name string) bool {
+	long := "--" + name
+	short := "-" + name
+	prefixLong := long + "="
+	prefixShort := short + "="
+	for _, arg := range args {
+		if arg == long || arg == short || strings.HasPrefix(arg, prefixLong) || strings.HasPrefix(arg, prefixShort) {
+			return true
+		}
+	}
+	return false
+}
+
+func printHelp(w io.Writer) {
+	fmt.Fprint(w, `smol 0.1.0
+
+Usage:
+  smol init [--starter default|classic-xhtml] [DIR]
+  smol new page SLUG TITLE
+  smol new post SLUG TITLE
+  smol build [options] [SITE_DIR]
+  smol help
+
+Init options:
+  --starter NAME            Starter: default or classic-xhtml. Default: default.
+
+Build options:
+  --out DIR                 Output directory. Default: public.
+  --sign-key FINGERPRINT    Sign generated pages with attest/attested-html.
+  --attest PATH             Path to attest signer binary. Default: auto-discover.
+  --attested-html PATH      Backward-compatible signer binary alias.
+  --unsigned                Build unsigned HTML even when sign_key is configured.
+  --force                   Remove existing output directory before build.
+
+Options must appear before positional arguments.
+`)
+}

@@ -1,0 +1,31 @@
+{
+  "format": "smol-page-v1",
+  "kind": "page",
+  "title": "Article 1",
+  "slug": "article-1",
+  "summary": "",
+  "published_utc": "",
+  "updated_utc": "",
+  "tags": [],
+  "draft": false,
+  "body_format": "markdown-xhtml-v1",
+  "header": [
+    {
+      "level": 1,
+      "html": "Article 1"
+    },
+    {
+      "level": 2,
+      "html": "Lorem ipsum dolor sit amet,<br />\nconsectetur adipiscing elit"
+    },
+    {
+      "level": 4,
+      "html": "Generic sample byline"
+    },
+    {
+      "level": 5,
+      "html": "Sample Author"
+    }
+  ],
+  "main_spacer": false
+}

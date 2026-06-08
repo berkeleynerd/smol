@@ -1,0 +1,35 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html
+  xmlns:epub="http://www.idpf.org/2007/ops" xmlns="http://www.w3.org/1999/xhtml"
+  xml:lang="en-US" epub="http://www.idpf.org/2007/ops" lang="en-US">
+<head>
+<meta charset="utf-8" http-equiv="content-type" content="application/xhtml+xml; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{.Page.Title}}</title>
+<style type="text/css">
+{{.Smol.InlineCSS}}</style>
+</head>
+<body>
+<header>
+{{range .Page.Header}}  <h{{.Level}}>{{.HTML}}</h{{.Level}}>
+{{end}}{{if .Page.TOCColumns}}  <div id="toc_container">
+    <div class="row">
+      <div class="column">
+        <p id="toc_title">Table of Contents</p>
+      </div>
+    </div>
+    <div class="row">
+{{range .Page.TOCColumns}}      <div class="column">
+        <ul class="toc_list">
+{{range .}}          <li><a href="{{.Href}}">{{.HTML}}</a></li>
+{{end}}        </ul>
+      </div>
+{{end}}    </div>
+  </div>
+{{end}}</header>
+<main>
+{{if .Page.MainSpacer}}  <p>&nbsp;</p>
+{{end}}{{indent .Page.ContentHTML "  "}}
+</main>
+</body>
+</html>

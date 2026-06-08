@@ -1,0 +1,48 @@
+# Go build and test artifacts
+/smol
+/bin/
+/build/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.coverprofile
+coverage/
+coverage.txt
+coverage.html
+
+# Local Go workspace files
+/go.work
+/go.work.sum
+
+# Local environment and editor state
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local Codex, Claude, and agent state
+.codex/
+.codex*/
+codex/
+codex*/
+.claude/
+.claude*/
+claude/
+claude*/
+AGENT.md
+AGENTS.md
+agent.md
+agents.md
+CLAUDE.md
+claude.md
+**/agent/claude.md
+**/agents/claude.md
+**/.agent/claude.md
+**/.agents/claude.md

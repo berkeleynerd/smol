@@ -1,0 +1,651 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+)
+
+var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+const (
+	starterDefault      = "default"
+	starterClassicXHTML = "classic-xhtml"
+)
+
+var starterNames = []string{starterDefault, starterClassicXHTML}
+
+func validStarterList() string {
+	return strings.Join(starterNames, "|")
+}
+
+func isValidStarter(name string) bool {
+	for _, starter := range starterNames {
+		if name == starter {
+			return true
+		}
+	}
+	return false
+}
+
+func InitSite(dir string) error {
+	return InitSiteWithStarter(dir, starterDefault)
+}
+
+func InitSiteWithStarter(dir, starter string) error {
+	if starter == "" {
+		starter = starterDefault
+	}
+	switch starter {
+	case starterDefault:
+		return initDefaultSite(dir)
+	case starterClassicXHTML:
+		return initClassicXHTMLSite(dir)
+	default:
+		return fmt.Errorf("unknown starter: %s (valid: %s)", starter, validStarterList())
+	}
+}
+
+func initDefaultSite(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, "smol.json")); err == nil {
+		return fmt.Errorf("target directory already contains smol.json")
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	dirs := []string{
+		filepath.Join(dir, "content", "pages", "index"),
+		filepath.Join(dir, "content", "posts"),
+		filepath.Join(dir, "themes", "default", "templates"),
+		filepath.Join(dir, "themes", "default", "partials"),
+		filepath.Join(dir, "themes", "default", "assets"),
+		filepath.Join(dir, "public"),
+	}
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+
+	files := map[string]string{
+		"smol.json": siteConfigJSON(),
+		filepath.Join("content", "pages", "index", "page.json"): contentJSON(ContentMeta{
+			Format:       "smol-page-v1",
+			Kind:         "page",
+			Title:        "Home",
+			Slug:         "index",
+			Summary:      "",
+			PublishedUTC: "2026-06-07T00:00:00Z",
+			UpdatedUTC:   "2026-06-07T00:00:00Z",
+			Tags:         []string{},
+			Draft:        false,
+		}),
+		filepath.Join("content", "pages", "index", "body.html"): `<p>Write your page here.</p>
+`,
+		filepath.Join("themes", "default", "theme.json"):                   defaultThemeJSON(),
+		filepath.Join("themes", "default", "templates", "index.html.tmpl"): defaultIndexTemplate(),
+		filepath.Join("themes", "default", "templates", "page.html.tmpl"):  defaultPageTemplate(),
+		filepath.Join("themes", "default", "templates", "post.html.tmpl"):  defaultPostTemplate(),
+		filepath.Join("themes", "default", "partials", "head.html.tmpl"):   defaultHeadPartial(),
+		filepath.Join("themes", "default", "partials", "footer.html.tmpl"): defaultFooterPartial(),
+		filepath.Join("themes", "default", "assets", "style.css"):          defaultCSS(),
+		".gitattributes": `public/**/*.html -text
+build/**/*.html -text
+*.attested.html -text
+`,
+	}
+	for rel, content := range files {
+		if err := writeFileExclusive(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func initClassicXHTMLSite(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, "smol.json")); err == nil {
+		return fmt.Errorf("target directory already contains smol.json")
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	dirs := []string{
+		filepath.Join(dir, "content", "pages", "index"),
+		filepath.Join(dir, "content", "pages", "about"),
+		filepath.Join(dir, "content", "pages", "sample"),
+		filepath.Join(dir, "themes", "classic-xhtml", "templates"),
+		filepath.Join(dir, "themes", "classic-xhtml", "assets"),
+		filepath.Join(dir, "public"),
+	}
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+
+	files := map[string]string{
+		"smol.json": classicXHTMLSiteConfigJSON(),
+		filepath.Join("content", "pages", "index", "page.json"):                  classicPageJSON("Home", "index", "A small flat XHTML site."),
+		filepath.Join("content", "pages", "index", "body.md"):                    classicIndexMarkdown(),
+		filepath.Join("content", "pages", "about", "page.json"):                  classicPageJSON("About", "about", "About this starter."),
+		filepath.Join("content", "pages", "about", "body.md"):                    classicAboutMarkdown(),
+		filepath.Join("content", "pages", "sample", "page.json"):                 classicPageJSON("Sample Page", "sample", "A sample Markdown/XHTML page."),
+		filepath.Join("content", "pages", "sample", "body.md"):                   classicSampleMarkdown(),
+		filepath.Join("themes", "classic-xhtml", "theme.json"):                   classicXHTMLThemeJSON(),
+		filepath.Join("themes", "classic-xhtml", "templates", "index.html.tmpl"): classicXHTMLPageTemplate(),
+		filepath.Join("themes", "classic-xhtml", "templates", "page.html.tmpl"):  classicXHTMLPageTemplate(),
+		filepath.Join("themes", "classic-xhtml", "assets", "style.css"):          classicXHTMLCSS(),
+		".gitattributes": `public/**/*.html -text
+build/**/*.html -text
+*.attested.html -text
+`,
+	}
+	for rel, content := range files {
+		if err := writeFileExclusive(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func NewContent(siteDir, kind, slug, title string) error {
+	site, err := LoadSiteConfig(siteDir)
+	if err != nil {
+		return err
+	}
+	if site.OutputMode == outputModeFlatXHTML && kind == "post" {
+		return fmt.Errorf("flat-xhtml-v1 supports pages only")
+	}
+	if !slugRE.MatchString(slug) {
+		return fmt.Errorf("invalid slug: %s", slug)
+	}
+	base := "pages"
+	if kind == "post" {
+		base = "posts"
+	}
+	dir := filepath.Join(siteDir, "content", base, slug)
+	if _, err := os.Stat(dir); err == nil {
+		return fmt.Errorf("%s already exists: %s", kind, slug)
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	now := time.Now().UTC().Truncate(time.Second).Format(time.RFC3339)
+	meta := ContentMeta{
+		Format:       "smol-page-v1",
+		Kind:         kind,
+		Title:        title,
+		Slug:         slug,
+		Summary:      "",
+		PublishedUTC: now,
+		UpdatedUTC:   now,
+		Tags:         []string{},
+		Draft:        false,
+	}
+	bodyName := "body.html"
+	bodyContent := `<p>Write your page here.</p>
+`
+	if site.OutputMode == outputModeFlatXHTML {
+		meta.BodyFormat = bodyFormatMarkdownXHTML
+		bodyName = "body.md"
+		bodyContent = "Write your page here.\n"
+	}
+	if err := writeFileExclusive(filepath.Join(dir, "page.json"), []byte(contentJSON(meta)), 0o644); err != nil {
+		return err
+	}
+	return writeFileExclusive(filepath.Join(dir, bodyName), []byte(bodyContent), 0o644)
+}
+
+func writeFileExclusive(path string, data []byte, perm os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(data)
+	return err
+}
+
+func contentJSON(meta ContentMeta) string {
+	data, _ := json.MarshalIndent(meta, "", "  ")
+	return string(data) + "\n"
+}
+
+func siteConfigJSON() string {
+	return `{
+  "format": "smol-site-v1",
+  "title": "Example Site",
+  "description": "Minimal signed pages.",
+  "language": "en",
+  "base_url": "https://example.org",
+  "publisher": "Example Publisher",
+  "theme": "default",
+  "sign_key": "",
+  "nav": [
+    {
+      "label": "Home",
+      "url": "/"
+    }
+  ]
+}
+`
+}
+
+func defaultThemeJSON() string {
+	return `{
+  "format": "smol-theme-v1",
+  "id": "default",
+  "name": "Smol Default",
+  "version": "0.1.0",
+  "templates": {
+    "index": "templates/index.html.tmpl",
+    "page": "templates/page.html.tmpl",
+    "post": "templates/post.html.tmpl"
+  },
+  "css": [
+    "assets/style.css"
+  ]
+}
+`
+}
+
+func defaultCSS() string {
+	return `body {
+  max-width: 70ch;
+  margin: 3rem auto;
+  padding: 0 1rem;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+nav a {
+  margin-right: 1rem;
+}
+`
+}
+
+func defaultHeadPartial() string {
+	return `<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Page.Title}} - {{.Site.Title}}</title>
+<meta name="description" content="{{.Page.Summary}}">
+<link rel="canonical" href="{{.Page.CanonicalURL}}">
+<style>
+{{.Smol.InlineCSS}}
+</style>
+{{.Smol.ManifestComment}}
+`
+}
+
+func defaultFooterPartial() string {
+	return `<footer>
+  <p>{{.Site.Publisher}}</p>
+</footer>
+`
+}
+
+func defaultPageTemplate() string {
+	return `<!doctype html>
+<html lang="{{.Site.Language}}">
+<head>
+  {{template "head" .}}
+</head>
+<body>
+  <header>
+    <a href="/">{{.Site.Title}}</a>
+    <nav aria-label="Main navigation">
+      {{range .Nav}}
+        <a href="{{.URL}}">{{.Label}}</a>
+      {{end}}
+    </nav>
+  </header>
+
+  <main>
+    <h1>{{.Page.Title}}</h1>
+    {{.Page.ContentHTML}}
+  </main>
+
+  {{template "footer" .}}
+</body>
+</html>
+`
+}
+
+func defaultPostTemplate() string {
+	return `<!doctype html>
+<html lang="{{.Site.Language}}">
+<head>
+  {{template "head" .}}
+</head>
+<body>
+  <header>
+    <a href="/">{{.Site.Title}}</a>
+    <nav aria-label="Main navigation">
+      {{range .Nav}}
+        <a href="{{.URL}}">{{.Label}}</a>
+      {{end}}
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <h1>{{.Page.Title}}</h1>
+      {{if .Page.PublishedUTC}}
+        <p><time datetime="{{.Page.PublishedUTC}}">{{date .Page.PublishedUTC "2006-01-02"}}</time></p>
+      {{end}}
+      {{.Page.ContentHTML}}
+    </article>
+  </main>
+
+  {{template "footer" .}}
+</body>
+</html>
+`
+}
+
+func defaultIndexTemplate() string {
+	return `<!doctype html>
+<html lang="{{.Site.Language}}">
+<head>
+  {{template "head" .}}
+</head>
+<body>
+  <header>
+    <a href="/">{{.Site.Title}}</a>
+    <nav aria-label="Main navigation">
+      {{range .Nav}}
+        <a href="{{.URL}}">{{.Label}}</a>
+      {{end}}
+    </nav>
+  </header>
+
+  <main>
+    <h1>{{.Site.Title}}</h1>
+    {{.Page.ContentHTML}}
+    {{if .Posts}}
+      <h2>Posts</h2>
+      <ul>
+        {{range .Posts}}
+          <li><a href="{{.URL}}">{{.Title}}</a>{{if .PublishedUTC}} <time datetime="{{.PublishedUTC}}">{{date .PublishedUTC "2006-01-02"}}</time>{{end}}</li>
+        {{end}}
+      </ul>
+    {{end}}
+  </main>
+
+  {{template "footer" .}}
+</body>
+</html>
+`
+}
+
+func classicXHTMLSiteConfigJSON() string {
+	return `{
+  "format": "smol-site-v1",
+  "title": "Classic XHTML",
+  "description": "A flat XHTML starter site.",
+  "language": "en-US",
+  "base_url": "https://example.org",
+  "publisher": "Example Publisher",
+  "theme": "classic-xhtml",
+  "output_mode": "flat-xhtml-v1",
+  "sign_key": "",
+  "nav": []
+}
+`
+}
+
+func classicPageJSON(title, slug, summary string) string {
+	return contentJSON(ContentMeta{
+		Format:       "smol-page-v1",
+		Kind:         "page",
+		Title:        title,
+		Slug:         slug,
+		Summary:      summary,
+		PublishedUTC: "",
+		UpdatedUTC:   "",
+		Tags:         []string{},
+		Draft:        false,
+		BodyFormat:   bodyFormatMarkdownXHTML,
+	})
+}
+
+func classicXHTMLThemeJSON() string {
+	return `{
+  "format": "smol-theme-v1",
+  "id": "classic-xhtml",
+  "name": "Classic XHTML",
+  "version": "0.1.0",
+  "templates": {
+    "index": "templates/index.html.tmpl",
+    "page": "templates/page.html.tmpl"
+  },
+  "css": [
+    "assets/style.css"
+  ]
+}
+`
+}
+
+func classicXHTMLPageTemplate() string {
+	return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html
+  xmlns:epub="http://www.idpf.org/2007/ops" xmlns="http://www.w3.org/1999/xhtml"
+  xml:lang="{{.Site.Language}}" epub="http://www.idpf.org/2007/ops" lang="{{.Site.Language}}">
+<head>
+<meta charset="utf-8" http-equiv="content-type" content="application/xhtml+xml; charset=UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{.Page.Title}}</title>
+<style type="text/css">
+{{.Smol.InlineCSS}}</style>
+</head>
+<body>
+<header>
+{{if .Page.Header}}{{range .Page.Header}}  <h{{.Level}}>{{.HTML}}</h{{.Level}}>
+{{end}}{{else}}  <h1>{{.Page.Title}}</h1>
+{{end}}{{if .Page.TOCColumns}}  <div id="toc_container">
+    <div class="row">
+      <div class="column">
+        <p id="toc_title">Table of Contents</p>
+      </div>
+    </div>
+    <div class="row">
+{{range .Page.TOCColumns}}      <div class="column">
+        <ul class="toc_list">
+{{range .}}          <li><a href="{{.Href}}">{{.HTML}}</a></li>
+{{end}}        </ul>
+      </div>
+{{end}}    </div>
+  </div>
+{{end}}</header>
+<main>
+{{if .Page.MainSpacer}}  <p>&nbsp;</p>
+{{end}}{{indent .Page.ContentHTML "  "}}
+</main>
+</body>
+</html>`
+}
+
+func classicIndexMarkdown() string {
+	return `This starter demonstrates the flat XHTML publishing path in smol. The pages are written as constrained Markdown and rendered as old-school single-file XHTML.
+
+<ul>
+  <li><a href="about.html">About this starter</a></li>
+  <li><a href="sample.html">Sample page</a></li>
+</ul>
+
+1. Numbered prose stays prose in markdown-xhtml-v1; ordered lists are written as raw XHTML when you want a real list.
+`
+}
+
+func classicAboutMarkdown() string {
+	return `## About this starter
+
+This site uses the classic-xhtml theme, flat filenames, inline CSS, and Markdown bodies. It is meant to show the ordinary publish flow without requiring signing setup.
+
+<blockquote>
+  <p>Raw XHTML blocks pass through unchanged, so the author controls exact markup when the narrow Markdown dialect is not enough.</p>
+</blockquote>
+
+Footnote rendering exists in the markdown-xhtml-v1 dialect, but this starter stylesheet intentionally leaves out the checkbox note controls.
+`
+}
+
+func classicSampleMarkdown() string {
+	return `## A sample section {#sample-section}
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae lectus at magna pretium laoreet. Curabitur porta, justo non facilisis dignissim, ipsum augue posuere nibh, at cursus ante neque sed erat.
+
+<ul>
+  <li>Use blank lines to separate paragraphs.</li>
+  <li>Use ATX headings for simple document structure.</li>
+  <li>Use raw XHTML for lists, quotations, tables, and other explicit structures.</li>
+</ul>
+
+1. This is a plain paragraph that begins with a number, not an ordered list.
+
+## Another heading
+
+Donec vitae arcu non mi porta facilisis. Sed finibus, nibh in lacinia congue, erat lacus ultricies neque, sed tincidunt mi dolor vitae ipsum.
+`
+}
+
+func classicXHTMLCSS() string {
+	return `a {
+  border-bottom: 1px solid #444444;
+  color: #444444;
+  text-decoration: none;
+}
+a:hover {
+  border-bottom: 0;
+}
+blockquote {
+  font-size: 0.95em;
+  font-style: italic;
+  margin-left: 4.602%;
+  margin-right: 4.602%;
+  margin-top: 0.3em;
+  text-align: justify
+}
+body {
+  line-height: 1.6;
+  font-size: 18px;
+  color: #444;
+  margin: 0;
+  padding: 0;
+  max-width: 650px;
+  margin: 0px auto;
+  padding: 0 10px;
+}
+html {
+  margin: 0;
+  padding: 0;
+}
+h1 {
+  font-size: 1.4em;
+  font-weight: normal;
+  line-height: 1.2;
+  margin-top: 0.571428em;
+  margin-left: 0.625%;
+  margin-right: 0.625%;
+  text-align: center
+}
+h2 {
+  font-size: 1.2em;
+  font-weight: normal;
+  line-height: 1.2;
+  font-style: italic;
+  margin-left: 0.156%;
+  margin-right: 0.156%;
+  margin-top: 1em;
+  text-align: center
+}
+h3 {
+  font-size: 1.61803398875em;
+  font-weight: normal;
+  margin-bottom: 0;
+  text-align: center;
+  color: #cc9933;
+}
+h4 {
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1.2;
+  font-size: 1.1em;
+  margin-top: 1em;
+  margin-bottom: 0.1em;
+  text-align: center
+}
+h5 {
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1.2;
+  font-size: 0.9em;
+  margin-top: 0em;
+  margin-bottom: 1.5em;
+  text-align: center
+}
+h6 {
+  font-size: 1em;
+  font-weight: normal;
+  line-height: 0em;
+  margin-top: 0;
+  margin-bottom: 1em;
+  text-align: center;
+}
+li {
+  margin-top: 0.3em
+}
+ol {
+  list-style-type: decimal;
+  margin-top: 1em
+}
+p {
+  margin-left: 0.625%;
+  margin-right: 0.625%;
+  margin-top: 0.0em;
+  text-indent: 3.281%;
+  text-align: normal;
+}
+#toc_container {
+  font-size: 95%;
+  margin-bottom: 1em;
+  padding: 20px;
+  width: auto;
+}
+#toc_title {
+    font-weight: 700;
+    text-align: center;
+}
+#toc_container li, #toc_container ul, #toc_container ul li {
+  list-style: outside none none !important;
+}
+div.row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  width: 100%;
+}
+div.column {
+  display: flex;
+  flex-direction: column;
+  flex-basis: 100%;
+}
+@media screen and (min-width: 650px) {
+  div.column {
+    flex: 1
+  }
+}
+`
+}

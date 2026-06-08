@@ -1,0 +1,6 @@
+public/**/*.html -text
+build/**/*.html -text
+*.attested.html -text
+testdata/golden/**/*.html -text
+testdata/sites/**/*.html -text
+testdata/sites/**/*.md -text
