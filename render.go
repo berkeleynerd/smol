@@ -216,6 +216,13 @@ func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []Manifest
 		}
 		return html, nil, nil
 	}
+	if page.BodyFormat == bodyFormatGemtext {
+		html, err := RenderGemtextXHTML(string(body))
+		if err != nil {
+			return "", nil, err
+		}
+		return html, nil, nil
+	}
 	var resources []ManifestResource
 	funcs := template.FuncMap{
 		"image": func(path, alt string) (template.HTML, error) {

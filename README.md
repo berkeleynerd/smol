@@ -9,6 +9,7 @@ byte-for-byte with `attest` / `attested-html`.
 - Creates small static sites with pages, posts, partials, assets, and theme config.
 - Emits single-file HTML with inline CSS.
 - Embeds supported images as `data:` URLs through `{{image}}`.
+- Renders constrained Markdown/XHTML and Gemtext source bodies to static HTML.
 - Adds a `SMOL ATTESTED MANIFEST V1` comment inside the signed payload.
 - Automatically calls `attest` / `attested-html sign` as the final build step
   when a signing key is configured and a signer is discoverable.
@@ -16,7 +17,7 @@ byte-for-byte with `attest` / `attested-html`.
 ## What it does not do
 
 - No JavaScript.
-- No broad Markdown in v0; only the constrained `markdown-xhtml-v1` dialect.
+- No broad Markdown in v0; only constrained `markdown-xhtml-v1` and `gemtext-v1` source formats.
 - No third-party packages, plugins, arbitrary hooks, or client-side routing.
 - No external stylesheets, scripts, fonts, iframes, forms, embeds, or remote image fetching.
 - No Publii theme rendering and no Handlebars support.
@@ -136,6 +137,12 @@ The optional `markdown-xhtml-v1` body format is intentionally narrow. It emits
 valid XHTML from blank-line paragraphs, ATX headings, raw XHTML blocks, and
 literal numeric inline notes. It does not perform broad Markdown parsing or
 HTML entity escaping.
+
+The optional `gemtext-v1` body format reads `body.gmi` and renders Gemtext line
+types to constrained XHTML. Supported Gemtext includes text lines, blank lines,
+`#`/`##`/`###` headings, `=>` links, `* ` list items, `>` quotes, and fenced
+preformatted blocks. This is a source format for the HTML publisher; it does not
+publish Gemini capsules yet.
 
 `published_utc` and `updated_utc` are publisher claims, not trusted timestamps.
 Trusted timestamping belongs in the external attestation evidence, not in page

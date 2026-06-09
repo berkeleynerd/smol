@@ -59,6 +59,7 @@ type Page struct {
 const (
 	bodyFormatHTML          = "html"
 	bodyFormatMarkdownXHTML = "markdown-xhtml-v1"
+	bodyFormatGemtext       = "gemtext-v1"
 )
 
 func LoadContent(siteDir string, site SiteConfig) ([]Page, []Page, error) {
@@ -111,6 +112,8 @@ func loadKind(siteDir string, site SiteConfig, kind string) ([]Page, error) {
 		bodyName := "body.html"
 		if bodyFormat == bodyFormatMarkdownXHTML {
 			bodyName = "body.md"
+		} else if bodyFormat == bodyFormatGemtext {
+			bodyName = "body.gmi"
 		}
 		route := routeFor(meta.Kind, meta.Slug, site.OutputMode)
 		pages = append(pages, Page{
@@ -172,8 +175,8 @@ func validateContentMeta(meta ContentMeta, expectedKind, dirSlug, outputMode str
 	if meta.Slug != dirSlug {
 		return fmt.Errorf("page slug does not match directory name: %s != %s", meta.Slug, dirSlug)
 	}
-	if meta.BodyFormat != "" && meta.BodyFormat != bodyFormatHTML && meta.BodyFormat != bodyFormatMarkdownXHTML {
-		return fmt.Errorf("invalid page.json: body_format must be html or markdown-xhtml-v1")
+	if meta.BodyFormat != "" && meta.BodyFormat != bodyFormatHTML && meta.BodyFormat != bodyFormatMarkdownXHTML && meta.BodyFormat != bodyFormatGemtext {
+		return fmt.Errorf("invalid page.json: body_format must be html, markdown-xhtml-v1, or gemtext-v1")
 	}
 	for _, entry := range meta.Header {
 		if entry.Level < 1 || entry.Level > 6 {
