@@ -14,5 +14,10 @@ They check byte boundaries, generated navigation placement, route-relative
 links, manifest absence in flat modes, and Gemini capsule shape. These fixtures
 are intentionally smol-reference-specific.
 
+Check fixtures use `action: "check"` to verify already-built output through the
+public `smol check` path. Starter-backed check fixtures build first, then check
+`public/`; direct check fixtures provide the already-built file under
+`check_path`.
+
 Invalid fixtures should be single-defect cases so the expected error substring
 identifies the intended failure.

@@ -43,6 +43,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		err = commandNew(args[1:])
 	case "build":
 		err = commandBuild(args[1:], stdout)
+	case "check":
+		err = commandCheck(args[1:], stdout)
 	case "publish":
 		err = commandPublish(args[1:], stdout)
 	default:
@@ -141,6 +143,30 @@ func commandBuild(args []string, stdout io.Writer) error {
 	})
 }
 
+func commandCheck(args []string, stdout io.Writer) error {
+	if flagsAppearAfterPositionals(args, "mode") {
+		return usageError{"options must appear before positional arguments"}
+	}
+
+	fs := flag.NewFlagSet("check", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	mode := fs.String("mode", checkModeDefault, "check mode")
+	if err := fs.Parse(args); err != nil {
+		return usageError{err.Error()}
+	}
+	if fs.NArg() != 1 {
+		return usageError{"usage: smol check [--mode default|flat-xhtml-v1|flat-gemini-v1] PATH"}
+	}
+	if _, err := normalizeCheckMode(*mode); err != nil {
+		return usageError{err.Error()}
+	}
+	return CheckPath(CheckOptions{
+		Path:   fs.Arg(0),
+		Mode:   *mode,
+		Stdout: stdout,
+	})
+}
+
 func commandPublish(args []string, stdout io.Writer) error {
 	if flagsAppearAfterPositionals(args, "out", "host", "user", "port", "path") {
 		return usageError{"options must appear before positional arguments"}
@@ -236,6 +262,7 @@ Usage:
   smol new page SLUG TITLE
   smol new post SLUG TITLE
   smol build [options] [SITE_DIR]
+  smol check [options] PATH
   smol publish [options] [SITE_DIR]
   smol help
 
@@ -249,6 +276,10 @@ Build options:
   --attested-html PATH      Backward-compatible signer binary alias.
   --unsigned                Build unsigned HTML even when sign_key is configured.
   --force                   Remove existing output directory before build.
+
+Check options:
+  --mode MODE               Check mode: default, flat-xhtml-v1, or flat-gemini-v1.
+                            Default: default.
 
 Publish options:
   --out DIR                 Output directory. Default: public.

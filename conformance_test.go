@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ type conformanceCase struct {
 	Expect         string                 `json:"expect"`
 	Starter        string                 `json:"starter"`
 	Fixture        string                 `json:"fixture"`
+	CheckPath      string                 `json:"check_path"`
 	ErrorSubstring string                 `json:"error_substring"`
 	Assertions     []conformanceAssertion `json:"assertions"`
 }
@@ -56,7 +58,7 @@ func TestStaticNoJSConformanceCorpus(t *testing.T) {
 		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
 			dir := prepareConformanceSite(t, root, tc)
-			err := runConformanceAction(dir, tc.Action)
+			err := runConformanceAction(dir, tc)
 			if tc.Expect == "fail" {
 				if err == nil {
 					t.Fatalf("%s unexpectedly passed", tc.Action)
@@ -185,14 +187,46 @@ func prepareConformanceSite(t *testing.T, root string, tc conformanceCase) strin
 	return dir
 }
 
-func runConformanceAction(siteDir, action string) error {
-	switch action {
+func runConformanceAction(siteDir string, tc conformanceCase) error {
+	switch tc.Action {
 	case "load":
 		return loadConformanceSite(siteDir)
 	case "build":
 		return BuildSite(BuildOptions{SiteDir: siteDir})
+	case "check":
+		return checkConformanceSite(siteDir, tc)
 	default:
-		return fmt.Errorf("unknown conformance action: %s", action)
+		return fmt.Errorf("unknown conformance action: %s", tc.Action)
+	}
+}
+
+func checkConformanceSite(siteDir string, tc conformanceCase) error {
+	if _, err := os.Stat(filepath.Join(siteDir, "smol.json")); err == nil {
+		if err := BuildSite(BuildOptions{SiteDir: siteDir}); err != nil {
+			return err
+		}
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	checkPath := tc.CheckPath
+	if checkPath == "" {
+		checkPath = "public"
+	}
+	return CheckPath(CheckOptions{
+		Path:   filepath.Join(siteDir, filepath.FromSlash(checkPath)),
+		Mode:   conformanceCheckMode(tc.OutputMode),
+		Stdout: io.Discard,
+	})
+}
+
+func conformanceCheckMode(outputMode string) string {
+	switch outputMode {
+	case outputModeFlatXHTML:
+		return outputModeFlatXHTML
+	case outputModeFlatGemini:
+		return outputModeFlatGemini
+	default:
+		return checkModeDefault
 	}
 }
 

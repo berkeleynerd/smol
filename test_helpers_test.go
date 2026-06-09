@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -58,21 +57,12 @@ func buildSite(t *testing.T, dir string) string {
 
 func decodeManifestMap(t *testing.T, html string) map[string]any {
 	t.Helper()
-	const start = "<!--SMOL ATTESTED MANIFEST V1\n"
-	const end = "\nSMOL ATTESTED MANIFEST END-->"
-	startAt := strings.Index(html, start)
-	if startAt < 0 {
-		t.Fatalf("manifest start not found")
-	}
-	startAt += len(start)
-	endAt := strings.Index(html[startAt:], end)
-	if endAt < 0 {
-		t.Fatalf("manifest end not found")
-	}
-	encoded := strings.ReplaceAll(html[startAt:startAt+endAt], "\n", "")
-	data, err := base64.StdEncoding.DecodeString(encoded)
+	data, ok, err := extractManifestPayload(html)
 	if err != nil {
-		t.Fatalf("DecodeString: %v", err)
+		t.Fatalf("extractManifestPayload: %v", err)
+	}
+	if !ok {
+		t.Fatalf("manifest not found")
 	}
 	var decoded map[string]any
 	if err := json.Unmarshal(data, &decoded); err != nil {

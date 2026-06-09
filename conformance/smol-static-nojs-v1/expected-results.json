@@ -2,7 +2,7 @@
   {
     "name": "explicit-navigation-default-html",
     "output_mode": "",
-    "action": "build",
+    "action": "check",
     "expect": "pass",
     "starter": "default",
     "fixture": "valid/explicit-navigation-default-html",
@@ -36,7 +36,7 @@
   {
     "name": "explicit-navigation-flat-xhtml",
     "output_mode": "flat-xhtml-v1",
-    "action": "build",
+    "action": "check",
     "expect": "pass",
     "starter": "classic-xhtml",
     "fixture": "valid/explicit-navigation-flat-xhtml",
@@ -63,7 +63,7 @@
   {
     "name": "explicit-navigation-gemini",
     "output_mode": "flat-gemini-v1",
-    "action": "build",
+    "action": "check",
     "expect": "pass",
     "fixture": "valid/explicit-navigation-gemini",
     "assertions": [
@@ -214,5 +214,86 @@
     "starter": "default",
     "fixture": "invalid/external-resource-in-chrome",
     "error_substring": "external resources are not supported"
+  },
+  {
+    "name": "check-script-html",
+    "output_mode": "",
+    "action": "check",
+    "expect": "fail",
+    "fixture": "invalid/check-script-html",
+    "check_path": "checked/bad.html",
+    "error_substring": "JavaScript is not supported"
+  },
+  {
+    "name": "check-unsafe-inline-css",
+    "output_mode": "",
+    "action": "check",
+    "expect": "fail",
+    "fixture": "invalid/check-unsafe-inline-css",
+    "check_path": "checked/bad.html",
+    "error_substring": "inline style 1"
+  },
+  {
+    "name": "check-unsafe-unclosed-style",
+    "output_mode": "",
+    "action": "check",
+    "expect": "fail",
+    "fixture": "invalid/check-unsafe-unclosed-style",
+    "check_path": "checked/bad.html",
+    "error_substring": "inline style 1"
+  },
+  {
+    "name": "check-malformed-manifest",
+    "output_mode": "",
+    "action": "check",
+    "expect": "fail",
+    "fixture": "invalid/check-malformed-manifest",
+    "check_path": "checked/bad.html",
+    "error_substring": "invalid manifest base64"
+  },
+  {
+    "name": "check-wrong-manifest-profile",
+    "output_mode": "",
+    "action": "check",
+    "expect": "fail",
+    "fixture": "invalid/check-wrong-manifest-profile",
+    "check_path": "checked/bad.html",
+    "error_substring": "profile must be smol/static-nojs-v1"
+  },
+  {
+    "name": "check-wrong-manifest-policy",
+    "output_mode": "",
+    "action": "check",
+    "expect": "fail",
+    "fixture": "invalid/check-wrong-manifest-policy",
+    "check_path": "checked/bad.html",
+    "error_substring": "policy.javascript must be false"
+  },
+  {
+    "name": "check-crlf-wrong-manifest-profile",
+    "output_mode": "",
+    "action": "check",
+    "expect": "fail",
+    "fixture": "invalid/check-crlf-wrong-manifest-profile",
+    "check_path": "checked/bad.html",
+    "error_substring": "profile must be smol/static-nojs-v1"
+  },
+  {
+    "name": "check-bad-gemtext",
+    "output_mode": "flat-gemini-v1",
+    "action": "check",
+    "expect": "fail",
+    "fixture": "invalid/check-bad-gemtext",
+    "check_path": "checked/bad.gmi",
+    "error_substring": "invalid gemtext link"
+  },
+  {
+    "name": "check-flat-xhtml-feature-default",
+    "output_mode": "",
+    "action": "check",
+    "expect": "fail",
+    "fixture": "invalid/check-flat-xhtml-feature-default",
+    "check_path": "checked/bad.html",
+    "error_substring": "interactive HTML is not supported"
   }
 ]

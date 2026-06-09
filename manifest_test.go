@@ -29,8 +29,8 @@ func TestManifestBase64DecodesToValidJSON(t *testing.T) {
 
 func containsManifest(html string) bool {
 	return len(html) > 0 &&
-		contains(html, "<!--SMOL ATTESTED MANIFEST V1\n") &&
-		contains(html, "\nSMOL ATTESTED MANIFEST END-->")
+		contains(html, manifestCommentStart) &&
+		contains(html, manifestCommentEnd)
 }
 
 func contains(haystack, needle string) bool {

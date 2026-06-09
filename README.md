@@ -12,6 +12,7 @@ capsules from Gemtext or Markdown source.
 - Emits flat Gemini capsules from `gemtext-v1` and `markdown-xhtml-v1` pages.
 - Embeds supported local images as `data:` URLs through `{{image}}` and Markdown images.
 - Renders constrained Markdown/XHTML and Gemtext source bodies for HTML output.
+- Checks already-built HTML/XHTML/Gemini output against the static no-JS profile.
 - Adds a `SMOL ATTESTED MANIFEST V1` comment to nested HTML output inside the
   signed payload.
 - Automatically calls `attest` / `attested-html sign` as the final build step
@@ -49,6 +50,7 @@ smol init mysite
 cd mysite
 smol new post hello-world "Hello World"
 smol build
+smol check public
 smol build --sign-key FINGERPRINT
 smol publish --dry-run
 smol publish
@@ -236,6 +238,24 @@ heading, then appends the rendered Gemtext body. The generated capsule writes
 `index.gmi` for the `index` page and `<slug>.gmi` for other pages. Themes,
 templates, CSS, HTML bodies, posts, Markdown images, and signing are not used by
 `flat-gemini-v1`.
+
+## Checking Output
+
+`smol check` validates already-built output files or directories against the
+static no-JS profile:
+
+```sh
+smol check public
+smol check --mode flat-xhtml-v1 public
+smol check --mode flat-gemini-v1 public
+```
+
+The default mode applies the strict nested HTML policy to `.html` and `.xhtml`
+files. Use `--mode flat-xhtml-v1` for flat XHTML output and
+`--mode flat-gemini-v1` for Gemini capsule output. `.gmi` files are validated as
+Gemtext. `smol check` validates static policy, inline CSS, and manifest
+well-formedness when a manifest is present; it does not verify cryptographic
+signatures.
 
 ## Publishing
 
