@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"unicode/utf8"
 )
 
 type gemtextLineKind int
@@ -88,7 +89,18 @@ func RenderGemtextXHTML(input string) (string, error) {
 	return strings.Join(out, "\n"), nil
 }
 
+func ValidateGemtext(input string) error {
+	_, err := parseGemtext(input)
+	return err
+}
+
 func parseGemtext(input string) ([]gemtextLine, error) {
+	if !utf8.ValidString(input) {
+		return nil, fmt.Errorf("invalid gemtext: input must be valid UTF-8")
+	}
+	if strings.ContainsRune(input, '\x00') {
+		return nil, fmt.Errorf("invalid gemtext: NUL bytes are not supported")
+	}
 	var lines []gemtextLine
 	inPre := false
 	for _, raw := range strings.Split(input, "\n") {
@@ -123,6 +135,9 @@ func parseGemtext(input string) ([]gemtextLine, error) {
 		default:
 			lines = append(lines, gemtextLine{kind: gemtextLineText, text: line})
 		}
+	}
+	if inPre {
+		return nil, fmt.Errorf("invalid gemtext: unterminated preformatted block")
 	}
 	return lines, nil
 }

@@ -2,14 +2,16 @@
 
 `smol` is the reference generator for the Attested HTML Static No-JS Profile.
 It builds minimal, self-contained static HTML pages that are ready to be signed
-byte-for-byte with `attest` / `attested-html`.
+byte-for-byte with `attest` / `attested-html`. It can also emit flat Gemini
+capsules from Gemtext source.
 
 ## What it does
 
 - Creates small static sites with pages, posts, partials, assets, and theme config.
 - Emits single-file HTML with inline CSS.
+- Emits flat Gemini capsules from `gemtext-v1` pages.
 - Embeds supported images as `data:` URLs through `{{image}}`.
-- Renders constrained Markdown/XHTML and Gemtext source bodies to static HTML.
+- Renders constrained Markdown/XHTML and Gemtext source bodies for HTML output.
 - Adds a `SMOL ATTESTED MANIFEST V1` comment inside the signed payload.
 - Automatically calls `attest` / `attested-html sign` as the final build step
   when a signing key is configured and a signer is discoverable.
@@ -98,10 +100,10 @@ public/
 ```
 
 Optional fields include `description`, `language`, `publisher`, `theme`,
-`sign_key`, and `nav`. If `--sign-key` is supplied, it overrides `sign_key` in
-`smol.json`. Use `--unsigned` to suppress signing even when a key is configured.
-The signing key value is a fingerprint or key ID, not a secret, but private
-signing keys should not be placed in cloud workspaces.
+`output_mode`, `sign_key`, and `nav`. If `--sign-key` is supplied, it overrides
+`sign_key` in `smol.json`. Use `--unsigned` to suppress signing even when a key
+is configured. The signing key value is a fingerprint or key ID, not a secret,
+but private signing keys should not be placed in cloud workspaces.
 
 ## Content
 
@@ -138,15 +140,36 @@ valid XHTML from blank-line paragraphs, ATX headings, raw XHTML blocks, and
 literal numeric inline notes. It does not perform broad Markdown parsing or
 HTML entity escaping.
 
-The optional `gemtext-v1` body format reads `body.gmi` and renders Gemtext line
-types to constrained XHTML. Supported Gemtext includes text lines, blank lines,
-`#`/`##`/`###` headings, `=>` links, `* ` list items, `>` quotes, and fenced
-preformatted blocks. This is a source format for the HTML publisher; it does not
-publish Gemini capsules yet.
+The optional `gemtext-v1` body format reads `body.gmi`. In HTML output modes it
+renders Gemtext line types to constrained XHTML. In `flat-gemini-v1` output mode
+it emits Gemini capsule pages directly. Supported Gemtext includes text lines,
+blank lines, `#`/`##`/`###` headings, `=>` links, `* ` list items, `>` quotes,
+and fenced preformatted blocks.
 
 `published_utc` and `updated_utc` are publisher claims, not trusted timestamps.
 Trusted timestamping belongs in the external attestation evidence, not in page
 metadata.
+
+## Gemini Capsules
+
+Set `output_mode` to `flat-gemini-v1` to generate a flat Gemini capsule:
+
+```json
+{
+  "format": "smol-site-v1",
+  "title": "Example Capsule",
+  "base_url": "gemini://example.org",
+  "output_mode": "flat-gemini-v1",
+  "sign_key": ""
+}
+```
+
+Capsule output supports pages only. Each page must use `body_format:
+"gemtext-v1"` and provide `body.gmi`. `smol` writes the page title as the first
+`#` heading, then appends the `body.gmi` content. The generated capsule writes
+`index.gmi` for the `index` page and `<slug>.gmi` for other pages. Themes,
+templates, CSS, HTML bodies, Markdown bodies, posts, images, and signing are not
+used by `flat-gemini-v1`.
 
 ## Signing
 
@@ -187,6 +210,9 @@ smol build --unsigned
 Signed builds call `attest` / `attested-html` for each generated page when
 `--sign-key` or `smol.json.sign_key` is non-empty. If a signing key is active
 but no signer can be resolved, the build fails before rendering pages:
+
+Gemini capsule output does not support signing yet. If `flat-gemini-v1` is
+configured with a signing key, the build fails unless `--unsigned` is passed.
 
 ```sh
 smol build --sign-key FINGERPRINT

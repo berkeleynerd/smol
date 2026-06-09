@@ -44,6 +44,20 @@ func TestInvalidBaseURLIsRejected(t *testing.T) {
 	}
 }
 
+func TestFlatGeminiRequiresGeminiBaseURL(t *testing.T) {
+	dir := t.TempDir()
+	writeText(t, filepath.Join(dir, "smol.json"), `{
+  "format": "smol-site-v1",
+  "title": "Example",
+  "base_url": "https://example.org",
+  "output_mode": "flat-gemini-v1"
+}
+`)
+	if _, err := LoadSiteConfig(dir); err == nil {
+		t.Fatalf("LoadSiteConfig accepted https base_url for flat-gemini-v1")
+	}
+}
+
 func TestThemeConfigLoads(t *testing.T) {
 	dir := testSite(t)
 	theme, err := LoadThemeConfig(filepath.Join(dir, "themes", "default"))

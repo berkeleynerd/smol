@@ -34,6 +34,9 @@ func TestInitCreatesExpectedStructure(t *testing.T) {
 	if !strings.Contains(attrs, "public/**/*.html -text") {
 		t.Fatalf(".gitattributes missing public rule: %q", attrs)
 	}
+	if !strings.Contains(attrs, "public/**/*.gmi -text") {
+		t.Fatalf(".gitattributes missing public Gemini rule: %q", attrs)
+	}
 }
 
 func TestInitClassicXHTMLCreatesExpectedStructure(t *testing.T) {
@@ -130,6 +133,35 @@ func TestNewPageInFlatXHTMLCreatesMarkdownBody(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "content", "pages", "notes", "body.html")); !os.IsNotExist(err) {
 		t.Fatalf("flat-xhtml page should not create body.html: %v", err)
+	}
+}
+
+func TestNewPageInFlatGeminiCreatesGemtextBody(t *testing.T) {
+	dir := geminiSite(t, "")
+	if err := NewContent(dir, "page", "notes", "Notes"); err != nil {
+		t.Fatalf("NewContent page: %v", err)
+	}
+	meta := readContentMeta(t, filepath.Join(dir, "content", "pages", "notes", "page.json"))
+	if meta.Kind != "page" || meta.Slug != "notes" || meta.BodyFormat != bodyFormatGemtext {
+		t.Fatalf("unexpected metadata: %#v", meta)
+	}
+	body := readText(t, filepath.Join(dir, "content", "pages", "notes", "body.gmi"))
+	if body != "Write your page here.\n" {
+		t.Fatalf("body = %q", body)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "content", "pages", "notes", "body.html")); !os.IsNotExist(err) {
+		t.Fatalf("flat-gemini page should not create body.html: %v", err)
+	}
+}
+
+func TestNewPostInFlatGeminiIsRejected(t *testing.T) {
+	dir := geminiSite(t, "")
+	err := NewContent(dir, "post", "hello-world", "Hello World")
+	if err == nil {
+		t.Fatalf("NewContent post accepted flat-gemini site")
+	}
+	if !strings.Contains(err.Error(), "flat-gemini-v1 supports pages only") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

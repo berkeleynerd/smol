@@ -12,6 +12,12 @@ func routeFor(kind, slug, outputMode string) string {
 		}
 		return "/" + slug + ".html"
 	}
+	if outputMode == outputModeFlatGemini {
+		if slug == "index" {
+			return "/"
+		}
+		return "/" + slug + ".gmi"
+	}
 	if kind == "page" {
 		if slug == "index" {
 			return "/"
@@ -31,6 +37,19 @@ func outputPathFor(outDir, route string) string {
 	}
 	parts := strings.Split(trimmed, "/")
 	parts = append(parts, "index.html")
+	return filepath.Join(append([]string{outDir}, parts...)...)
+}
+
+func geminiOutputPathFor(outDir, route string) string {
+	if route == "/" {
+		return filepath.Join(outDir, "index.gmi")
+	}
+	trimmed := strings.Trim(route, "/")
+	if strings.HasSuffix(trimmed, ".gmi") {
+		return filepath.Join(outDir, filepath.FromSlash(trimmed))
+	}
+	parts := strings.Split(trimmed, "/")
+	parts = append(parts, "index.gmi")
 	return filepath.Join(append([]string{outDir}, parts...)...)
 }
 

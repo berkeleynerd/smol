@@ -157,8 +157,8 @@ func validateContentMeta(meta ContentMeta, expectedKind, dirSlug, outputMode str
 	if meta.Kind != "page" && meta.Kind != "post" {
 		return fmt.Errorf("invalid page.json: kind must be page or post")
 	}
-	if outputMode == outputModeFlatXHTML && meta.Kind != "page" {
-		return fmt.Errorf("flat-xhtml-v1 supports only pages")
+	if (outputMode == outputModeFlatXHTML || outputMode == outputModeFlatGemini) && meta.Kind != "page" {
+		return fmt.Errorf("%s supports only pages", outputMode)
 	}
 	if meta.Kind != expectedKind {
 		return fmt.Errorf("content kind does not match directory: %s in %s", meta.Kind, expectedKind)
@@ -177,6 +177,9 @@ func validateContentMeta(meta ContentMeta, expectedKind, dirSlug, outputMode str
 	}
 	if meta.BodyFormat != "" && meta.BodyFormat != bodyFormatHTML && meta.BodyFormat != bodyFormatMarkdownXHTML && meta.BodyFormat != bodyFormatGemtext {
 		return fmt.Errorf("invalid page.json: body_format must be html, markdown-xhtml-v1, or gemtext-v1")
+	}
+	if outputMode == outputModeFlatGemini && meta.BodyFormat != bodyFormatGemtext {
+		return fmt.Errorf("flat-gemini-v1 supports only gemtext-v1 bodies")
 	}
 	for _, entry := range meta.Header {
 		if entry.Level < 1 || entry.Level > 6 {

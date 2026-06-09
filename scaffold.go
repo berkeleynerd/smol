@@ -93,7 +93,9 @@ func initDefaultSite(dir string) error {
 		filepath.Join("themes", "default", "partials", "footer.html.tmpl"): defaultFooterPartial(),
 		filepath.Join("themes", "default", "assets", "style.css"):          defaultCSS(),
 		".gitattributes": `public/**/*.html -text
+public/**/*.gmi -text
 build/**/*.html -text
+build/**/*.gmi -text
 *.attested.html -text
 `,
 	}
@@ -138,7 +140,9 @@ func initClassicXHTMLSite(dir string) error {
 		filepath.Join("themes", "classic-xhtml", "templates", "page.html.tmpl"):  classicXHTMLPageTemplate(),
 		filepath.Join("themes", "classic-xhtml", "assets", "style.css"):          classicXHTMLCSS(),
 		".gitattributes": `public/**/*.html -text
+public/**/*.gmi -text
 build/**/*.html -text
+build/**/*.gmi -text
 *.attested.html -text
 `,
 	}
@@ -155,8 +159,8 @@ func NewContent(siteDir, kind, slug, title string) error {
 	if err != nil {
 		return err
 	}
-	if site.OutputMode == outputModeFlatXHTML && kind == "post" {
-		return fmt.Errorf("flat-xhtml-v1 supports pages only")
+	if (site.OutputMode == outputModeFlatXHTML || site.OutputMode == outputModeFlatGemini) && kind == "post" {
+		return fmt.Errorf("%s supports pages only", site.OutputMode)
 	}
 	if !slugRE.MatchString(slug) {
 		return fmt.Errorf("invalid slug: %s", slug)
@@ -192,6 +196,10 @@ func NewContent(siteDir, kind, slug, title string) error {
 	if site.OutputMode == outputModeFlatXHTML {
 		meta.BodyFormat = bodyFormatMarkdownXHTML
 		bodyName = "body.md"
+		bodyContent = "Write your page here.\n"
+	} else if site.OutputMode == outputModeFlatGemini {
+		meta.BodyFormat = bodyFormatGemtext
+		bodyName = "body.gmi"
 		bodyContent = "Write your page here.\n"
 	}
 	if err := writeFileExclusive(filepath.Join(dir, "page.json"), []byte(contentJSON(meta)), 0o644); err != nil {

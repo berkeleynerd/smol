@@ -78,6 +78,9 @@ func BuildSite(opts BuildOptions) error {
 	if err != nil {
 		return err
 	}
+	if siteCfg.OutputMode == outputModeFlatGemini {
+		return buildGeminiCapsule(siteDir, siteCfg, opts)
+	}
 	themeDir := filepath.Join(siteDir, "themes", siteCfg.Theme)
 	themeCfg, err := LoadThemeConfigForMode(themeDir, siteCfg.OutputMode)
 	if err != nil {

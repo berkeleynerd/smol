@@ -1,6 +1,9 @@
 public/**/*.html -text
+public/**/*.gmi -text
 build/**/*.html -text
+build/**/*.gmi -text
 *.attested.html -text
 testdata/golden/**/*.html -text
 testdata/sites/**/*.html -text
 testdata/sites/**/*.md -text
+testdata/sites/**/*.gmi -text

@@ -42,7 +42,10 @@ type ThemeTemplates struct {
 	Post  string `json:"post"`
 }
 
-const outputModeFlatXHTML = "flat-xhtml-v1"
+const (
+	outputModeFlatXHTML  = "flat-xhtml-v1"
+	outputModeFlatGemini = "flat-gemini-v1"
+)
 
 type SiteView struct {
 	Title           string
@@ -89,8 +92,11 @@ func LoadSiteConfig(siteDir string) (SiteConfig, error) {
 	if cfg.Theme == "" {
 		cfg.Theme = "default"
 	}
-	if cfg.OutputMode != "" && cfg.OutputMode != outputModeFlatXHTML {
-		return SiteConfig{}, fmt.Errorf("invalid smol.json: output_mode must be %s", outputModeFlatXHTML)
+	if cfg.OutputMode != "" && cfg.OutputMode != outputModeFlatXHTML && cfg.OutputMode != outputModeFlatGemini {
+		return SiteConfig{}, fmt.Errorf("invalid smol.json: output_mode must be %s or %s", outputModeFlatXHTML, outputModeFlatGemini)
+	}
+	if cfg.OutputMode == outputModeFlatGemini && u.Scheme != "gemini" {
+		return SiteConfig{}, fmt.Errorf("invalid smol.json: flat-gemini-v1 requires a gemini:// base_url")
 	}
 	if cfg.Nav == nil {
 		cfg.Nav = []NavItem{}
