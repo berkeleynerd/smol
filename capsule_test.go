@@ -84,6 +84,33 @@ Paragraph with [docs](https://example.org), *emphasis*, and `+"`code`"+`.
 	}
 }
 
+func TestGeminiCapsuleRendersExplicitPageNavigation(t *testing.T) {
+	dir := geminiSite(t, "")
+	writeGeminiPage(t, dir, "index", "Home", "Welcome.\n")
+	writeGeminiPage(t, dir, "essays", "Essays", "Essays.\n")
+	writeGeminiPage(t, dir, "kore", "Kore", "Kore.\n")
+	writeGeminiPageWithLinks(t, dir, "lament", "Lament", "Lament.\n", `"links": {"up": "essays", "previous": "kore", "next": "parable-of-old-stone", "related": ["index"]}`)
+	writeGeminiPage(t, dir, "parable-of-old-stone", "Parable of Old Stone", "Stone.\n")
+	if err := BuildSite(BuildOptions{SiteDir: dir}); err != nil {
+		t.Fatalf("BuildSite: %v", err)
+	}
+	lament := readText(t, filepath.Join(dir, "public", "lament.gmi"))
+	for _, want := range []string{
+		"=> index.gmi Home",
+		"=> essays.gmi Up: Essays",
+		"=> kore.gmi Previous: Kore",
+		"=> parable-of-old-stone.gmi Next: Parable of Old Stone",
+		"=> index.gmi Related: Home",
+	} {
+		if !strings.Contains(lament, want) {
+			t.Fatalf("lament.gmi missing %q:\n%s", want, lament)
+		}
+	}
+	if strings.Contains(lament, "#top") || strings.Contains(lament, "=> /") {
+		t.Fatalf("Gemini navigation contained HTML top link or root href:\n%s", lament)
+	}
+}
+
 func TestGeminiCapsuleRejectsHTMLBody(t *testing.T) {
 	dir := geminiSite(t, "")
 	pageDir := filepath.Join(dir, "content", "pages", "index")
@@ -148,6 +175,15 @@ func geminiSite(t *testing.T, signKey string) string {
 
 func writeGeminiPage(t *testing.T, dir, slug, title, body string) {
 	t.Helper()
+	writeGeminiPageWithLinks(t, dir, slug, title, body, "")
+}
+
+func writeGeminiPageWithLinks(t *testing.T, dir, slug, title, body, links string) {
+	t.Helper()
+	linkBlock := ""
+	if links != "" {
+		linkBlock = ",\n  " + links
+	}
 	pageDir := filepath.Join(dir, "content", "pages", slug)
 	writeText(t, filepath.Join(pageDir, "page.json"), `{
   "format": "smol-page-v1",
@@ -159,7 +195,7 @@ func writeGeminiPage(t *testing.T, dir, slug, title, body string) {
   "updated_utc": "",
   "tags": [],
   "draft": false,
-  "body_format": "gemtext-v1"
+  "body_format": "gemtext-v1"`+linkBlock+`
 }
 `)
 	writeText(t, filepath.Join(pageDir, "body.gmi"), body)

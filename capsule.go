@@ -14,6 +14,10 @@ func buildGeminiCapsule(siteDir string, siteCfg SiteConfig, opts BuildOptions) e
 	if err != nil {
 		return err
 	}
+	pages, posts, err = resolvePageNavigations(pages, posts, siteCfg.OutputMode)
+	if err != nil {
+		return err
+	}
 	pages = nonDraft(pages)
 	posts = nonDraft(posts)
 	if len(posts) > 0 {
@@ -89,23 +93,39 @@ func renderGeminiPage(page Page) (string, error) {
 	default:
 		return "", fmt.Errorf("flat-gemini-v1 supports only markdown-xhtml-v1 or gemtext-v1 bodies")
 	}
-	var out strings.Builder
-	out.WriteString("# ")
-	out.WriteString(singleLineGemtext(page.Title))
-	out.WriteByte('\n')
-	if body == "" {
-		return out.String(), nil
+	parts := []string{"# " + singleLineGemtext(page.Title)}
+	if strings.TrimSpace(body) != "" {
+		parts = append(parts, strings.TrimRight(body, "\n"))
 	}
-	out.WriteByte('\n')
-	out.WriteString(body)
-	if !strings.HasSuffix(body, "\n") {
-		out.WriteByte('\n')
+	if nav := renderGeminiNavigation(page.Navigation); nav != "" {
+		parts = append(parts, nav)
 	}
-	return out.String(), nil
+	return strings.Join(parts, "\n\n") + "\n", nil
 }
 
 func singleLineGemtext(value string) string {
 	value = strings.ReplaceAll(value, "\r", " ")
 	value = strings.ReplaceAll(value, "\n", " ")
 	return strings.Join(strings.Fields(value), " ")
+}
+
+func renderGeminiNavigation(nav PageNavigation) string {
+	if !nav.HasLinks {
+		return ""
+	}
+	lines := []string{}
+	appendLink := func(link *PageNavigationLink) {
+		if link != nil {
+			lines = append(lines, "=> "+link.Href+" "+singleLineGemtext(link.Label))
+		}
+	}
+	appendLink(nav.Home)
+	appendLink(nav.Up)
+	appendLink(nav.Previous)
+	appendLink(nav.Next)
+	for _, link := range nav.Related {
+		link := link
+		appendLink(&link)
+	}
+	return strings.Join(lines, "\n")
 }

@@ -24,6 +24,7 @@ type ContentMeta struct {
 	Header       []HeaderEntry `json:"header"`
 	TOCColumns   [][]TOCItem   `json:"toc_columns"`
 	MainSpacer   bool          `json:"main_spacer"`
+	Links        *PageLinks    `json:"links,omitempty"`
 }
 
 type HeaderEntry struct {
@@ -34,6 +35,13 @@ type HeaderEntry struct {
 type TOCItem struct {
 	Href string        `json:"href"`
 	HTML template.HTML `json:"html"`
+}
+
+type PageLinks struct {
+	Up       string   `json:"up,omitempty"`
+	Previous string   `json:"previous,omitempty"`
+	Next     string   `json:"next,omitempty"`
+	Related  []string `json:"related,omitempty"`
 }
 
 type Page struct {
@@ -52,6 +60,8 @@ type Page struct {
 	Header       []HeaderEntry
 	TOCColumns   [][]TOCItem
 	MainSpacer   bool
+	Links        PageLinks
+	Navigation   PageNavigation
 	contentDir   string
 	bodyPath     string
 }
@@ -105,6 +115,10 @@ func loadKind(siteDir string, site SiteConfig, kind string) ([]Page, error) {
 		if meta.Tags == nil {
 			meta.Tags = []string{}
 		}
+		links := PageLinks{}
+		if meta.Links != nil {
+			links = *meta.Links
+		}
 		bodyFormat := meta.BodyFormat
 		if bodyFormat == "" {
 			bodyFormat = bodyFormatHTML
@@ -131,6 +145,7 @@ func loadKind(siteDir string, site SiteConfig, kind string) ([]Page, error) {
 			Header:       meta.Header,
 			TOCColumns:   meta.TOCColumns,
 			MainSpacer:   meta.MainSpacer,
+			Links:        links,
 			contentDir:   dir,
 			bodyPath:     filepath.Join(dir, bodyName),
 		})
@@ -181,6 +196,11 @@ func validateContentMeta(meta ContentMeta, expectedKind, dirSlug, outputMode str
 	if outputMode == outputModeFlatGemini && meta.BodyFormat != bodyFormatGemtext && meta.BodyFormat != bodyFormatMarkdownXHTML {
 		return fmt.Errorf("flat-gemini-v1 supports only markdown-xhtml-v1 or gemtext-v1 bodies")
 	}
+	if meta.Links != nil {
+		if err := validatePageLinks(*meta.Links); err != nil {
+			return err
+		}
+	}
 	for _, entry := range meta.Header {
 		if entry.Level < 1 || entry.Level > 6 {
 			return fmt.Errorf("invalid page.json: header level must be 1 through 6")
@@ -191,6 +211,24 @@ func validateContentMeta(meta ContentMeta, expectedKind, dirSlug, outputMode str
 			if item.Href == "" {
 				return fmt.Errorf("invalid page.json: toc_columns href is required")
 			}
+		}
+	}
+	return nil
+}
+
+func validatePageLinks(links PageLinks) error {
+	for name, slug := range map[string]string{
+		"up":       links.Up,
+		"previous": links.Previous,
+		"next":     links.Next,
+	} {
+		if slug != "" && !slugRE.MatchString(slug) {
+			return fmt.Errorf("invalid page.json: links.%s must be a page slug", name)
+		}
+	}
+	for _, slug := range links.Related {
+		if slug == "" || !slugRE.MatchString(slug) {
+			return fmt.Errorf("invalid page.json: links.related must contain page slugs")
 		}
 	}
 	return nil

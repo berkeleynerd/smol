@@ -24,6 +24,8 @@ capsules from Gemtext or Markdown source.
 - No external stylesheets, scripts, fonts, iframes, forms, embeds, or remote image fetching.
 - No Publii theme rendering and no Handlebars support.
 - No cryptographic signing implementation inside `smol`.
+- No strict historical XHTML DTD conformance; XHTML-style output is used for
+  consistent static markup and closing discipline, not DTD purity.
 
 ## Install
 
@@ -123,6 +125,23 @@ Each page or post has `page.json` and `body.html` by default:
   "draft": false
 }
 ```
+
+Pages may declare explicit page-navigation links:
+
+```json
+"links": {
+  "up": "essays",
+  "previous": "kore",
+  "next": "lament",
+  "related": ["parable-of-old-stone"]
+}
+```
+
+Link values are page slugs only. Post slugs, draft pages, unknown slugs,
+self-links, duplicate `related` targets, and external URLs are rejected. Themes
+can render the resolved links with `.PageNav`; the starter themes render them as
+generated navigation chrome outside the authored content body. This is
+structural isolation only: signed HTML still covers the full generated page.
 
 `body.html` is an HTML fragment. It may use only the fixed body functions:
 

@@ -312,7 +312,7 @@ func defaultPageTemplate() string {
 <head>
   {{template "head" .}}
 </head>
-<body>
+<body{{if .PageNav.HasLinks}} id="top"{{end}}>
   <header>
     <a href="/">{{.Site.Title}}</a>
     <nav aria-label="Main navigation">
@@ -322,11 +322,20 @@ func defaultPageTemplate() string {
     </nav>
   </header>
 
-  <main>
+  <main{{if .PageNav.HasLinks}} id="content" data-smol-authored-content="true"{{end}}>
     <h1>{{.Page.Title}}</h1>
     {{.Page.ContentHTML}}
   </main>
-
+{{if .PageNav.HasLinks}}{{with .PageNav}}
+  <nav data-smol-generated-chrome="navigation" aria-label="Page navigation">
+    <a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
+{{with .Home}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Up}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Previous}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Next}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{range .Related}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}  </nav>
+{{end}}{{end}}
   {{template "footer" .}}
 </body>
 </html>
@@ -339,7 +348,7 @@ func defaultPostTemplate() string {
 <head>
   {{template "head" .}}
 </head>
-<body>
+<body{{if .PageNav.HasLinks}} id="top"{{end}}>
   <header>
     <a href="/">{{.Site.Title}}</a>
     <nav aria-label="Main navigation">
@@ -349,7 +358,7 @@ func defaultPostTemplate() string {
     </nav>
   </header>
 
-  <main>
+  <main{{if .PageNav.HasLinks}} id="content" data-smol-authored-content="true"{{end}}>
     <article>
       <h1>{{.Page.Title}}</h1>
       {{if .Page.PublishedUTC}}
@@ -358,7 +367,16 @@ func defaultPostTemplate() string {
       {{.Page.ContentHTML}}
     </article>
   </main>
-
+{{if .PageNav.HasLinks}}{{with .PageNav}}
+  <nav data-smol-generated-chrome="navigation" aria-label="Page navigation">
+    <a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
+{{with .Home}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Up}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Previous}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Next}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{range .Related}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}  </nav>
+{{end}}{{end}}
   {{template "footer" .}}
 </body>
 </html>
@@ -371,7 +389,7 @@ func defaultIndexTemplate() string {
 <head>
   {{template "head" .}}
 </head>
-<body>
+<body{{if .PageNav.HasLinks}} id="top"{{end}}>
   <header>
     <a href="/">{{.Site.Title}}</a>
     <nav aria-label="Main navigation">
@@ -381,7 +399,7 @@ func defaultIndexTemplate() string {
     </nav>
   </header>
 
-  <main>
+  <main{{if .PageNav.HasLinks}} id="content" data-smol-authored-content="true"{{end}}>
     <h1>{{.Site.Title}}</h1>
     {{.Page.ContentHTML}}
     {{if .Posts}}
@@ -393,7 +411,16 @@ func defaultIndexTemplate() string {
       </ul>
     {{end}}
   </main>
-
+{{if .PageNav.HasLinks}}{{with .PageNav}}
+  <nav data-smol-generated-chrome="navigation" aria-label="Page navigation">
+    <a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
+{{with .Home}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Up}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Previous}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Next}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{range .Related}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}  </nav>
+{{end}}{{end}}
   {{template "footer" .}}
 </body>
 </html>
@@ -460,7 +487,7 @@ func classicXHTMLPageTemplate() string {
 <style type="text/css">
 {{.Smol.InlineCSS}}</style>
 </head>
-<body>
+<body{{if .PageNav.HasLinks}} id="top"{{end}}>
 <header>
 {{if .Page.Header}}{{range .Page.Header}}  <h{{.Level}}>{{.HTML}}</h{{.Level}}>
 {{end}}{{else}}  <h1>{{.Page.Title}}</h1>
@@ -479,10 +506,19 @@ func classicXHTMLPageTemplate() string {
 {{end}}    </div>
   </div>
 {{end}}</header>
-<main>
+<main{{if .PageNav.HasLinks}} id="content" data-smol-authored-content="true"{{end}}>
 {{if .Page.MainSpacer}}  <p>&nbsp;</p>
 {{end}}{{indent .Page.ContentHTML "  "}}
 </main>
+{{if .PageNav.HasLinks}}{{with .PageNav}}<nav data-smol-generated-chrome="navigation" aria-label="Page navigation">
+  <a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
+{{with .Home}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Up}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Previous}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{with .Next}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}{{range .Related}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
+{{end}}</nav>
+{{end}}{{end -}}
 </body>
 </html>`
 }

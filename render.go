@@ -36,12 +36,13 @@ type SmolView struct {
 }
 
 type TemplateRoot struct {
-	Site  SiteView
-	Page  Page
-	Pages []Page
-	Posts []Page
-	Nav   []NavItem
-	Smol  SmolView
+	Site    SiteView
+	Page    Page
+	Pages   []Page
+	Posts   []Page
+	Nav     []NavItem
+	PageNav PageNavigation
+	Smol    SmolView
 }
 
 type renderResult struct {
@@ -96,6 +97,10 @@ func BuildSite(opts BuildOptions) error {
 	if err != nil {
 		return err
 	}
+	pages, posts, err = resolvePageNavigations(pages, posts, siteCfg.OutputMode)
+	if err != nil {
+		return err
+	}
 	pages = nonDraft(pages)
 	posts = nonDraft(posts)
 	css, cssResources, err := loadThemeCSS(themeDir, themeCfg)
@@ -146,11 +151,12 @@ func BuildSite(opts BuildOptions) error {
 			}
 		}
 		root := TemplateRoot{
-			Site:  site,
-			Page:  page,
-			Pages: pages,
-			Posts: posts,
-			Nav:   siteCfg.Nav,
+			Site:    site,
+			Page:    page,
+			Pages:   pages,
+			Posts:   posts,
+			Nav:     siteCfg.Nav,
+			PageNav: page.Navigation,
 			Smol: SmolView{
 				Version:         Version,
 				Profile:         Profile,
