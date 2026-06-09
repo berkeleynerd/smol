@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -116,7 +117,7 @@ func initClassicXHTMLSite(dir string) error {
 	dirs := []string{
 		filepath.Join(dir, "content", "pages", "index"),
 		filepath.Join(dir, "content", "pages", "about"),
-		filepath.Join(dir, "content", "pages", "sample"),
+		filepath.Join(dir, "content", "pages", "sample", "assets"),
 		filepath.Join(dir, "themes", "classic-xhtml", "templates"),
 		filepath.Join(dir, "themes", "classic-xhtml", "assets"),
 		filepath.Join(dir, "public"),
@@ -135,6 +136,7 @@ func initClassicXHTMLSite(dir string) error {
 		filepath.Join("content", "pages", "about", "body.md"):                    classicAboutMarkdown(),
 		filepath.Join("content", "pages", "sample", "page.json"):                 classicPageJSON("Sample Page", "sample", "A sample Markdown/XHTML page."),
 		filepath.Join("content", "pages", "sample", "body.md"):                   classicSampleMarkdown(),
+		filepath.Join("content", "pages", "sample", "assets", "sample.png"):      classicSamplePNG(),
 		filepath.Join("themes", "classic-xhtml", "theme.json"):                   classicXHTMLThemeJSON(),
 		filepath.Join("themes", "classic-xhtml", "templates", "index.html.tmpl"): classicXHTMLPageTemplate(),
 		filepath.Join("themes", "classic-xhtml", "templates", "page.html.tmpl"):  classicXHTMLPageTemplate(),
@@ -493,7 +495,8 @@ func classicIndexMarkdown() string {
   <li><a href="sample.html">Sample page</a></li>
 </ul>
 
-1. Numbered prose stays prose in markdown-xhtml-v1; ordered lists are written as raw XHTML when you want a real list.
+1. Numbered Markdown now renders as an ordered list.
+2. Use raw XHTML only when you need exact markup.
 `
 }
 
@@ -511,22 +514,40 @@ Footnote rendering exists in the markdown-xhtml-v1 dialect, but this starter sty
 }
 
 func classicSampleMarkdown() string {
-	return `## A sample section {#sample-section}
+	return "Markdown Capability Sample\n" +
+		"==========================\n\n" +
+		"This page exercises the supported `markdown-xhtml-v1` source dialect. It includes [relative links](about.html), [HTTPS links](https://example.org), *emphasis*, __strong text__, `inline code`, escaped punctuation like \\*literal stars\\*, and a numeric note.[^1]\n\n" +
+		"![Embedded sample image](assets/sample.png \"Local embedded image\")\n\n" +
+		"## ATX heading with an ID {#sample-section}\n\n" +
+		"1. Ordered items preserve sequence in HTML.\n" +
+		"2. Ordered items render lossily as numbered text in Gemini.\n\n" +
+		"- Unordered item\n" +
+		"- Another unordered item\n\n" +
+		"- [x] Static task item\n" +
+		"- [ ] Another static task item\n\n" +
+		"> Blockquotes stay readable in both HTML and Gemini output.\n> They can span more than one line.\n\n" +
+		"| Source | HTML output | Gemini output |\n" +
+		"| --- | --- | --- |\n" +
+		"| Markdown | rich static XHTML | lossy Gemtext |\n" +
+		"| Gemtext | constrained XHTML | native capsule text |\n\n" +
+		"```text\n" +
+		"No scripts.\n" +
+		"No remote image references.\n" +
+		"Signing remains the final build step.\n" +
+		"```\n\n" +
+		"---\n\n" +
+		"<section>\n" +
+		"  <p>Raw XHTML block passthrough remains available for explicit publisher-controlled markup.</p>\n" +
+		"</section>\n\n" +
+		"[^1]: Footnotes are rendered inline in this constrained dialect.\n"
+}
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae lectus at magna pretium laoreet. Curabitur porta, justo non facilisis dignissim, ipsum augue posuere nibh, at cursus ante neque sed erat.
-
-<ul>
-  <li>Use blank lines to separate paragraphs.</li>
-  <li>Use ATX headings for simple document structure.</li>
-  <li>Use raw XHTML for lists, quotations, tables, and other explicit structures.</li>
-</ul>
-
-1. This is a plain paragraph that begins with a number, not an ordered list.
-
-## Another heading
-
-Donec vitae arcu non mi porta facilisis. Sed finibus, nibh in lacinia congue, erat lacus ultricies neque, sed tincidunt mi dolor vitae ipsum.
-`
+func classicSamplePNG() string {
+	data, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=")
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
 }
 
 func classicXHTMLCSS() string {
@@ -559,6 +580,12 @@ body {
 html {
   margin: 0;
   padding: 0;
+}
+code {
+  background: #f6f6f6;
+  font-family: monospace;
+  font-size: 0.95em;
+  padding: 0.05em 0.2em;
 }
 h1 {
   font-size: 1.4em;
@@ -612,6 +639,17 @@ h6 {
   margin-bottom: 1em;
   text-align: center;
 }
+hr {
+  border: 0;
+  border-top: 1px solid #cccccc;
+  margin: 1.5em 0;
+}
+img {
+  display: block;
+  height: auto;
+  margin: 1em auto;
+  max-width: 100%;
+}
 li {
   margin-top: 0.3em
 }
@@ -625,6 +663,36 @@ p {
   margin-top: 0.0em;
   text-indent: 3.281%;
   text-align: normal;
+}
+pre {
+  background: #f6f6f6;
+  overflow-x: auto;
+  padding: 0.75em;
+  white-space: pre-wrap;
+}
+pre code {
+  background: transparent;
+  padding: 0;
+}
+table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: 100%;
+}
+td, th {
+  border: 1px solid #cccccc;
+  padding: 0.25em 0.4em;
+  text-align: left;
+}
+ul {
+  margin-top: 1em;
+}
+ul.task-list {
+  list-style-type: none;
+  padding-left: 1em;
+}
+li.task-list-item {
+  margin-left: 0;
 }
 #toc_container {
   font-size: 95%;

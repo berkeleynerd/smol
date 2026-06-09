@@ -58,7 +58,33 @@ func TestGeminiCapsuleUnsignedSuppressesConfiguredSignKey(t *testing.T) {
 	}
 }
 
-func TestGeminiCapsuleRejectsNonGemtextBody(t *testing.T) {
+func TestGeminiCapsuleBuildsMarkdownBody(t *testing.T) {
+	dir := geminiSite(t, "")
+	writeMarkdownGeminiPage(t, dir, "index", "Capsule", `## Markdown Section
+
+Paragraph with [docs](https://example.org), *emphasis*, and `+"`code`"+`.
+
+1. First
+2. Second
+`)
+	if err := BuildSite(BuildOptions{SiteDir: dir}); err != nil {
+		t.Fatalf("BuildSite: %v", err)
+	}
+	index := readText(t, filepath.Join(dir, "public", "index.gmi"))
+	for _, want := range []string{
+		"# Capsule",
+		"## Markdown Section",
+		"Paragraph with docs, emphasis, and code.",
+		"=> https://example.org docs",
+		"* 1. First",
+	} {
+		if !strings.Contains(index, want) {
+			t.Fatalf("index.gmi missing %q:\n%s", want, index)
+		}
+	}
+}
+
+func TestGeminiCapsuleRejectsHTMLBody(t *testing.T) {
 	dir := geminiSite(t, "")
 	pageDir := filepath.Join(dir, "content", "pages", "index")
 	writeText(t, filepath.Join(pageDir, "page.json"), `{
@@ -70,13 +96,12 @@ func TestGeminiCapsuleRejectsNonGemtextBody(t *testing.T) {
   "published_utc": "",
   "updated_utc": "",
   "tags": [],
-  "draft": false,
-  "body_format": "markdown-xhtml-v1"
+  "draft": false
 }
 `)
-	writeText(t, filepath.Join(pageDir, "body.md"), "Welcome.\n")
+	writeText(t, filepath.Join(pageDir, "body.html"), "<p>Welcome.</p>\n")
 	err := BuildSite(BuildOptions{SiteDir: dir})
-	if err == nil || !strings.Contains(err.Error(), "flat-gemini-v1 supports only gemtext-v1 bodies") {
+	if err == nil || !strings.Contains(err.Error(), "flat-gemini-v1 supports only markdown-xhtml-v1 or gemtext-v1 bodies") {
 		t.Fatalf("expected body format rejection, got %v", err)
 	}
 }
@@ -138,4 +163,23 @@ func writeGeminiPage(t *testing.T, dir, slug, title, body string) {
 }
 `)
 	writeText(t, filepath.Join(pageDir, "body.gmi"), body)
+}
+
+func writeMarkdownGeminiPage(t *testing.T, dir, slug, title, body string) {
+	t.Helper()
+	pageDir := filepath.Join(dir, "content", "pages", slug)
+	writeText(t, filepath.Join(pageDir, "page.json"), `{
+  "format": "smol-page-v1",
+  "kind": "page",
+  "title": "`+title+`",
+  "slug": "`+slug+`",
+  "summary": "",
+  "published_utc": "",
+  "updated_utc": "",
+  "tags": [],
+  "draft": false,
+  "body_format": "markdown-xhtml-v1"
+}
+`)
+	writeText(t, filepath.Join(pageDir, "body.md"), body)
 }

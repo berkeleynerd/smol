@@ -27,7 +27,7 @@ func TestSampleFixtureBuildsFlatFilesAndArticleGolden(t *testing.T) {
 	}
 
 	got := readText(t, filepath.Join(public, "article-2.html"))
-	want := readText(t, filepath.Join("testdata", "golden", "sample", "article-2.html"))
+	want := strings.TrimSuffix(readText(t, filepath.Join("testdata", "golden", "sample", "article-2.html")), "\n")
 	assertSameRegion(t, "style", between(got, "<style type=\"text/css\">\n", "</style>"), between(want, "<style type=\"text/css\">\n", "</style>"))
 	assertSameRegion(t, "shell prefix", before(got, "<main>\n"), before(want, "<main>\n"))
 	assertSameRegion(t, "body", between(got, "<main>\n", "\n</main>"), between(want, "<main>\n", "\n</main>"))

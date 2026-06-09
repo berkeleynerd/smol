@@ -52,6 +52,7 @@ func TestInitClassicXHTMLCreatesExpectedStructure(t *testing.T) {
 		filepath.Join("content", "pages", "about", "body.md"),
 		filepath.Join("content", "pages", "sample", "page.json"),
 		filepath.Join("content", "pages", "sample", "body.md"),
+		filepath.Join("content", "pages", "sample", "assets", "sample.png"),
 		filepath.Join("themes", "classic-xhtml", "theme.json"),
 		filepath.Join("themes", "classic-xhtml", "templates", "index.html.tmpl"),
 		filepath.Join("themes", "classic-xhtml", "templates", "page.html.tmpl"),
@@ -67,6 +68,9 @@ func TestInitClassicXHTMLCreatesExpectedStructure(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "content", "pages", "index", "body.html")); !os.IsNotExist(err) {
 		t.Fatalf("classic-xhtml should not create body.html for index: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(dir, "content", "pages", "kore")); !os.IsNotExist(err) {
+		t.Fatalf("classic-xhtml should not create a separate kore page: %v", err)
+	}
 	site := readText(t, filepath.Join(dir, "smol.json"))
 	if !strings.Contains(site, `"output_mode": "flat-xhtml-v1"`) || !strings.Contains(site, `"theme": "classic-xhtml"`) {
 		t.Fatalf("classic smol.json missing flat mode/theme:\n%s", site)
@@ -76,11 +80,30 @@ func TestInitClassicXHTMLCreatesExpectedStructure(t *testing.T) {
 		t.Fatalf("index body_format = %q", indexMeta.BodyFormat)
 	}
 	css := readText(t, filepath.Join(dir, "themes", "classic-xhtml", "assets", "style.css"))
-	if !strings.Contains(css, "max-width: 650px;") || !strings.Contains(css, "text-indent: 3.281%;") {
-		t.Fatalf("classic CSS missing expected typography:\n%s", css)
+	for _, want := range []string{
+		"max-width: 650px;",
+		"text-indent: 3.281%;",
+		"pre code {",
+		"table {",
+		"ul.task-list {",
+		"img {",
+		"hr {",
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("classic CSS missing %q:\n%s", want, css)
+		}
 	}
 	if strings.Contains(css, "input[type=checkbox]") || strings.Contains(css, "\nsup {") {
 		t.Fatalf("classic CSS retained footnote controls:\n%s", css)
+	}
+	sampleBody := readText(t, filepath.Join(dir, "content", "pages", "sample", "body.md"))
+	for _, want := range []string{"Markdown Capability Sample", "![Embedded sample image]", "| Source | HTML output | Gemini output |", "- [x] Static task item", "```text", "<section>"} {
+		if !strings.Contains(sampleBody, want) {
+			t.Fatalf("sample demo missing %q:\n%s", want, sampleBody)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "content", "pages", "sample", "assets", "sample.png")); err != nil {
+		t.Fatalf("sample image missing: %v", err)
 	}
 }
 

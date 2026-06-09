@@ -71,16 +71,23 @@ func buildGeminiCapsule(siteDir string, siteCfg SiteConfig, opts BuildOptions) e
 }
 
 func renderGeminiPage(page Page) (string, error) {
-	if page.BodyFormat != bodyFormatGemtext {
-		return "", fmt.Errorf("flat-gemini-v1 supports only gemtext-v1 bodies")
-	}
 	bodyBytes, err := os.ReadFile(page.bodyPath)
 	if err != nil {
 		return "", err
 	}
 	body := string(bodyBytes)
-	if err := ValidateGemtext(body); err != nil {
-		return "", err
+	switch page.BodyFormat {
+	case bodyFormatGemtext:
+		if err := ValidateGemtext(body); err != nil {
+			return "", err
+		}
+	case bodyFormatMarkdownXHTML:
+		body, err = RenderMarkdownGemtext(body)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", fmt.Errorf("flat-gemini-v1 supports only markdown-xhtml-v1 or gemtext-v1 bodies")
 	}
 	var out strings.Builder
 	out.WriteString("# ")

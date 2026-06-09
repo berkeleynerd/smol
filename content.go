@@ -178,8 +178,8 @@ func validateContentMeta(meta ContentMeta, expectedKind, dirSlug, outputMode str
 	if meta.BodyFormat != "" && meta.BodyFormat != bodyFormatHTML && meta.BodyFormat != bodyFormatMarkdownXHTML && meta.BodyFormat != bodyFormatGemtext {
 		return fmt.Errorf("invalid page.json: body_format must be html, markdown-xhtml-v1, or gemtext-v1")
 	}
-	if outputMode == outputModeFlatGemini && meta.BodyFormat != bodyFormatGemtext {
-		return fmt.Errorf("flat-gemini-v1 supports only gemtext-v1 bodies")
+	if outputMode == outputModeFlatGemini && meta.BodyFormat != bodyFormatGemtext && meta.BodyFormat != bodyFormatMarkdownXHTML {
+		return fmt.Errorf("flat-gemini-v1 supports only markdown-xhtml-v1 or gemtext-v1 bodies")
 	}
 	for _, entry := range meta.Header {
 		if entry.Level < 1 || entry.Level > 6 {

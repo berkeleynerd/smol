@@ -3,14 +3,14 @@
 `smol` is the reference generator for the Attested HTML Static No-JS Profile.
 It builds minimal, self-contained static HTML pages that are ready to be signed
 byte-for-byte with `attest` / `attested-html`. It can also emit flat Gemini
-capsules from Gemtext source.
+capsules from Gemtext or Markdown source.
 
 ## What it does
 
 - Creates small static sites with pages, posts, partials, assets, and theme config.
 - Emits single-file HTML with inline CSS.
-- Emits flat Gemini capsules from `gemtext-v1` pages.
-- Embeds supported images as `data:` URLs through `{{image}}`.
+- Emits flat Gemini capsules from `gemtext-v1` and `markdown-xhtml-v1` pages.
+- Embeds supported local images as `data:` URLs through `{{image}}` and Markdown images.
 - Renders constrained Markdown/XHTML and Gemtext source bodies for HTML output.
 - Adds a `SMOL ATTESTED MANIFEST V1` comment inside the signed payload.
 - Automatically calls `attest` / `attested-html sign` as the final build step
@@ -19,7 +19,7 @@ capsules from Gemtext source.
 ## What it does not do
 
 - No JavaScript.
-- No broad Markdown in v0; only constrained `markdown-xhtml-v1` and `gemtext-v1` source formats.
+- No broad CommonMark/GFM in v0; only constrained `markdown-xhtml-v1` and `gemtext-v1` source formats.
 - No third-party packages, plugins, arbitrary hooks, or client-side routing.
 - No external stylesheets, scripts, fonts, iframes, forms, embeds, or remote image fetching.
 - No Publii theme rendering and no Handlebars support.
@@ -66,10 +66,9 @@ cd mysite
 smol build
 ```
 
-The `classic-xhtml` starter creates a flat XHTML site with `.md` bodies and a
-classic typographic stylesheet. The `markdown-xhtml-v1` dialect supports
-literal numeric inline notes, but this starter intentionally omits checkbox
-footnote CSS so the onboarding path stays focused on ordinary publishing.
+The `classic-xhtml` starter creates a flat XHTML site with `.md` bodies, a
+classic typographic stylesheet, and a sample page that exercises the supported
+Markdown elements.
 
 ## Site Structure
 
@@ -137,16 +136,58 @@ Supported image types are PNG, JPG, JPEG, GIF, WebP, and AVIF. SVG is not
 supported in v0. Images are read only from the content directory and embedded as
 data URLs.
 
-The optional `markdown-xhtml-v1` body format is intentionally narrow. It emits
-valid XHTML from blank-line paragraphs, ATX headings, raw XHTML blocks, and
-literal numeric inline notes. It does not perform broad Markdown parsing or
-HTML entity escaping.
+The optional `markdown-xhtml-v1` body format reads `body.md`. It is a
+constrained Markdown/XHTML dialect, not full CommonMark or GFM. Normal text is
+HTML-escaped. Supported Markdown includes paragraphs, ATX headings, Setext
+headings, inline links, local embedded images, emphasis, strong text, inline
+code, ordered lists, unordered lists, static task-list items, blockquotes,
+simple pipe tables, fenced code blocks, horizontal rules, raw allowlisted XHTML
+blocks, and literal numeric inline notes.
+
+Task-list items render as static list text with checkbox glyphs, not form
+controls or JavaScript. Markdown links may use relative URLs, fragments,
+`http://`, `https://`, `gemini://`, and `mailto:`. `javascript:`, `data:`, and
+unsupported URL schemes are rejected.
+
+Markdown images use this form:
+
+```md
+![Alt text](assets/hero.png "Optional title")
+```
+
+Markdown images must be local files under the page or post content directory,
+matching the `{{image}}` content lookup policy. Remote image URLs, protocol
+relative URLs, absolute paths, path traversal, missing files, unsupported
+extensions, and SVG are rejected. Supported image types are PNG, JPG, JPEG, GIF,
+WebP, and AVIF. Images are embedded as `data:` URLs in the generated XHTML. In
+HTML output modes that emit a `SMOL ATTESTED MANIFEST V1` comment, Markdown
+image resources are included in that manifest.
+
+The `classic-xhtml` starter stylesheet covers links, images, emphasis, strong
+text, inline code, code blocks, ordered lists, unordered lists, task lists,
+blockquotes, tables, horizontal rules, and headings with small static CSS rules.
 
 The optional `gemtext-v1` body format reads `body.gmi`. In HTML output modes it
 renders Gemtext line types to constrained XHTML. In `flat-gemini-v1` output mode
 it emits Gemini capsule pages directly. Supported Gemtext includes text lines,
 blank lines, `#`/`##`/`###` headings, `=>` links, `* ` list items, `>` quotes,
 and fenced preformatted blocks.
+
+### Source and output formats
+
+| Source body format | HTML/XHTML output | `flat-gemini-v1` output |
+| --- | --- | --- |
+| `html` / `body.html` | Rendered as constrained HTML through the selected theme. | Not supported. |
+| `markdown-xhtml-v1` / `body.md` | Rendered as the supported constrained Markdown/XHTML subset. Markdown images embed as local `data:` URLs. | Rendered lossily to Gemtext. Formatting is reduced to readable text, links become separate `=> URL label` lines, tables become preformatted pipe tables, and Markdown images are rejected. |
+| `gemtext-v1` / `body.gmi` | Rendered as constrained XHTML from supported Gemtext line types. | Near-native pass-through with a generated page title heading. |
+
+Markdown-to-Gemini conversion preserves document shape where Gemtext has a
+matching concept: headings, paragraphs, links, lists, task-list text,
+blockquotes, tables as preformatted blocks, fenced code blocks, horizontal
+rules, and raw XHTML text extraction from valid allowlisted XML fragments.
+Emphasis, strong text, inline code, and footnote markup are stripped to readable
+plain text. Markdown images are rejected for `flat-gemini-v1`; binary image
+asset copying into capsules is intentionally not implemented.
 
 `published_utc` and `updated_utc` are publisher claims, not trusted timestamps.
 Trusted timestamping belongs in the external attestation evidence, not in page
@@ -166,12 +207,13 @@ Set `output_mode` to `flat-gemini-v1` to generate a flat Gemini capsule:
 }
 ```
 
-Capsule output supports pages only. Each page must use `body_format:
-"gemtext-v1"` and provide `body.gmi`. `smol` writes the page title as the first
-`#` heading, then appends the `body.gmi` content. The generated capsule writes
+Capsule output supports pages only. Pages may use `body_format: "gemtext-v1"`
+with `body.gmi` or `body_format: "markdown-xhtml-v1"` with `body.md`. HTML body
+pages and posts are rejected. `smol` writes the page title as the first `#`
+heading, then appends the rendered Gemtext body. The generated capsule writes
 `index.gmi` for the `index` page and `<slug>.gmi` for other pages. Themes,
-templates, CSS, HTML bodies, Markdown bodies, posts, images, and signing are not
-used by `flat-gemini-v1`.
+templates, CSS, HTML bodies, posts, Markdown images, and signing are not used by
+`flat-gemini-v1`.
 
 ## Publishing
 

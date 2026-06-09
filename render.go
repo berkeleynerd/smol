@@ -247,11 +247,19 @@ func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []Manifest
 		return "", nil, err
 	}
 	if page.BodyFormat == bodyFormatMarkdownXHTML {
-		html, err := RenderMarkdownXHTML(string(body))
+		var resources []ManifestResource
+		html, err := RenderMarkdownXHTMLWithImages(string(body), func(path, alt, title string) (string, error) {
+			html, resource, err := embedImageWithTitle(page, path, alt, title)
+			if err != nil {
+				return "", err
+			}
+			resources = append(resources, resource)
+			return string(html), nil
+		})
 		if err != nil {
 			return "", nil, err
 		}
-		return html, nil, nil
+		return html, resources, nil
 	}
 	if page.BodyFormat == bodyFormatGemtext {
 		html, err := RenderGemtextXHTML(string(body))
@@ -290,6 +298,10 @@ func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []Manifest
 }
 
 func embedImage(page Page, path, alt string) (template.HTML, ManifestResource, error) {
+	return embedImageWithTitle(page, path, alt, "")
+}
+
+func embedImageWithTitle(page Page, path, alt, title string) (template.HTML, ManifestResource, error) {
 	if alt == "" {
 		return "", ManifestResource{}, fmt.Errorf("image alt text is required")
 	}
@@ -308,7 +320,11 @@ func embedImage(page Page, path, alt string) (template.HTML, ManifestResource, e
 	}
 	hash := sha256.Sum256(data)
 	src := "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data)
-	tag := `<img src="` + src + `" alt="` + template.HTMLEscapeString(alt) + `" loading="lazy" decoding="async">`
+	titleAttr := ""
+	if title != "" {
+		titleAttr = ` title="` + template.HTMLEscapeString(title) + `"`
+	}
+	tag := `<img src="` + src + `" alt="` + template.HTMLEscapeString(alt) + `"` + titleAttr + ` loading="lazy" decoding="async">`
 	plural := "pages"
 	if page.Kind == "post" {
 		plural = "posts"

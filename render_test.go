@@ -46,6 +46,84 @@ func TestBodyHTMLRendersWithImage(t *testing.T) {
 	}
 }
 
+func TestMarkdownBodyEmbedsImageAndRecordsManifest(t *testing.T) {
+	dir := testSite(t)
+	pageDir := filepath.Join(dir, "content", "pages", "index")
+	imageBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+	writeBytes(t, filepath.Join(pageDir, "assets", "hero.png"), imageBytes)
+	writeMarkdownIndex(t, dir, `![Hero image](assets/hero.png "Hero title")`)
+	buildSite(t, dir)
+	html := readText(t, filepath.Join(dir, "public", "index.html"))
+	if !strings.Contains(html, `src="data:image/png;base64,`) || strings.Contains(html, `src="assets/hero.png"`) {
+		t.Fatalf("markdown image was not embedded only as a data URL:\n%s", html)
+	}
+	if !strings.Contains(html, `alt="Hero image"`) || !strings.Contains(html, `title="Hero title"`) {
+		t.Fatalf("markdown image missing alt/title:\n%s", html)
+	}
+	manifest := decodeManifestMap(t, html)
+	imageResource := resourceWithKind(manifest, "image")
+	if imageResource == nil {
+		t.Fatalf("manifest missing image resource: %#v", manifest["resources"])
+	}
+	imageHash := sha256.Sum256(imageBytes)
+	if imageResource["sha256"] != hex.EncodeToString(imageHash[:]) {
+		t.Fatalf("image sha256 = %v, want %s", imageResource["sha256"], hex.EncodeToString(imageHash[:]))
+	}
+	if err := ValidateHTML(html); err != nil {
+		t.Fatalf("ValidateHTML rejected markdown image output: %v", err)
+	}
+}
+
+func TestMarkdownImagePolicyErrors(t *testing.T) {
+	tests := map[string]struct {
+		body  string
+		setup func(string)
+		want  string
+	}{
+		"remote https": {
+			body: "![Remote](https://example.org/hero.png)",
+			want: "remote markdown images are not supported",
+		},
+		"protocol relative": {
+			body: "![Remote](//example.org/hero.png)",
+			want: "remote markdown images are not supported",
+		},
+		"path traversal": {
+			body: "![Escape](../hero.png)",
+			want: "image path escapes content directory",
+		},
+		"absolute path": {
+			body: "![Escape](/tmp/hero.png)",
+			want: "image path escapes content directory",
+		},
+		"missing file": {
+			body: "![Missing](assets/missing.png)",
+			want: "no such file or directory",
+		},
+		"unsupported svg": {
+			body: "![SVG](assets/hero.svg)",
+			setup: func(pageDir string) {
+				writeText(t, filepath.Join(pageDir, "assets", "hero.svg"), "<svg></svg>")
+			},
+			want: "unsupported image extension: svg",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := testSite(t)
+			pageDir := filepath.Join(dir, "content", "pages", "index")
+			if tc.setup != nil {
+				tc.setup(pageDir)
+			}
+			writeMarkdownIndex(t, dir, tc.body)
+			err := BuildSite(BuildOptions{SiteDir: dir})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("BuildSite error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestImagePathWithDotDotIsRejected(t *testing.T) {
 	page := Page{Kind: "post", Slug: "x", contentDir: t.TempDir()}
 	if _, _, err := embedImage(page, "../x.png", "Alt"); err == nil {
@@ -166,6 +244,9 @@ func TestClassicXHTMLStarterBuildsFlatPages(t *testing.T) {
 			t.Fatalf("expected flat output %s: %v", rel, err)
 		}
 	}
+	if _, err := os.Stat(filepath.Join(dir, "public", "kore.html")); !os.IsNotExist(err) {
+		t.Fatalf("classic-xhtml should not generate kore.html: %v", err)
+	}
 	if _, err := os.Stat(filepath.Join(dir, "public", "about", "index.html")); !os.IsNotExist(err) {
 		t.Fatalf("classic-xhtml should not generate nested about/index.html: %v", err)
 	}
@@ -173,11 +254,25 @@ func TestClassicXHTMLStarterBuildsFlatPages(t *testing.T) {
 	if !strings.Contains(html, `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"`) {
 		t.Fatalf("sample output missing XHTML doctype:\n%s", html)
 	}
-	if !strings.Contains(html, `<h2 id="sample-section">A sample section</h2>`) {
-		t.Fatalf("sample output missing markdown heading id:\n%s", html)
+	for _, want := range []string{
+		`<h1>Markdown Capability Sample</h1>`,
+		`<a href="https://example.org">HTTPS links</a>`,
+		`<em>emphasis</em>`,
+		`<strong>strong text</strong>`,
+		`<code>inline code</code>`,
+		`src="data:image/png;base64,`,
+		`<ul class="task-list">`,
+		`<table>`,
+		`<pre><code>No scripts.`,
+		`<hr />`,
+		`<section>`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("sample output missing %q:\n%s", want, html)
+		}
 	}
-	if !strings.Contains(html, `<p>1. This is a plain paragraph that begins with a number, not an ordered list.</p>`) {
-		t.Fatalf("sample output converted numbered prose unexpectedly:\n%s", html)
+	if strings.Contains(html, `src="assets/sample.png"`) || strings.Contains(html, `src="http://`) || strings.Contains(html, `src="https://`) || strings.Contains(html, `src="//`) {
+		t.Fatalf("sample output contains external or unembedded image reference:\n%s", html)
 	}
 }
 
@@ -343,4 +438,23 @@ func writePost(t *testing.T, dir, slug, title, published string, draft bool) {
 }
 `)
 	writeText(t, filepath.Join(postDir, "body.html"), "<p>Post.</p>\n")
+}
+
+func writeMarkdownIndex(t *testing.T, dir, body string) {
+	t.Helper()
+	pageDir := filepath.Join(dir, "content", "pages", "index")
+	writeText(t, filepath.Join(pageDir, "page.json"), `{
+  "format": "smol-page-v1",
+  "kind": "page",
+  "title": "Home",
+  "slug": "index",
+  "summary": "Home page.",
+  "published_utc": "",
+  "updated_utc": "",
+  "tags": [],
+  "draft": false,
+  "body_format": "markdown-xhtml-v1"
+}
+`)
+	writeText(t, filepath.Join(pageDir, "body.md"), body+"\n")
 }
