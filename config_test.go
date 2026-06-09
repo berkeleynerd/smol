@@ -58,6 +58,30 @@ func TestFlatGeminiRequiresGeminiBaseURL(t *testing.T) {
 	}
 }
 
+func TestPublishConfigLoadsWithoutValidation(t *testing.T) {
+	dir := t.TempDir()
+	writeText(t, filepath.Join(dir, "smol.json"), `{
+  "format": "smol-site-v1",
+  "title": "Example",
+  "base_url": "https://example.org",
+  "publish": {
+    "method": "scp",
+    "host": "example.org",
+    "user": "deploy",
+    "port": 2222,
+    "path": "/var/www/example"
+  }
+}
+`)
+	cfg, err := LoadSiteConfig(dir)
+	if err != nil {
+		t.Fatalf("LoadSiteConfig: %v", err)
+	}
+	if cfg.Publish.Method != "scp" || cfg.Publish.Host != "example.org" || cfg.Publish.User != "deploy" || cfg.Publish.Port != 2222 || cfg.Publish.Path != "/var/www/example" {
+		t.Fatalf("publish config = %#v", cfg.Publish)
+	}
+}
+
 func TestThemeConfigLoads(t *testing.T) {
 	dir := testSite(t)
 	theme, err := LoadThemeConfig(filepath.Join(dir, "themes", "default"))

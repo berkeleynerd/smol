@@ -15,16 +15,25 @@ type NavItem struct {
 }
 
 type SiteConfig struct {
-	Format      string    `json:"format"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Language    string    `json:"language"`
-	BaseURL     string    `json:"base_url"`
-	Publisher   string    `json:"publisher"`
-	Theme       string    `json:"theme"`
-	OutputMode  string    `json:"output_mode"`
-	SignKey     string    `json:"sign_key"`
-	Nav         []NavItem `json:"nav"`
+	Format      string        `json:"format"`
+	Title       string        `json:"title"`
+	Description string        `json:"description"`
+	Language    string        `json:"language"`
+	BaseURL     string        `json:"base_url"`
+	Publisher   string        `json:"publisher"`
+	Theme       string        `json:"theme"`
+	OutputMode  string        `json:"output_mode"`
+	SignKey     string        `json:"sign_key"`
+	Nav         []NavItem     `json:"nav"`
+	Publish     PublishConfig `json:"publish"`
+}
+
+type PublishConfig struct {
+	Method string `json:"method"`
+	Host   string `json:"host"`
+	User   string `json:"user"`
+	Port   int    `json:"port"`
+	Path   string `json:"path"`
 }
 
 type ThemeConfig struct {

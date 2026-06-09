@@ -43,6 +43,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		err = commandNew(args[1:])
 	case "build":
 		err = commandBuild(args[1:], stdout)
+	case "publish":
+		err = commandPublish(args[1:], stdout)
 	default:
 		fmt.Fprintf(stderr, "error: unknown command: %s\n", args[0])
 		return 2
@@ -101,7 +103,7 @@ func commandNew(args []string) error {
 }
 
 func commandBuild(args []string, stdout io.Writer) error {
-	if flagsAppearAfterPositionals(args) {
+	if flagsAppearAfterPositionals(args, "out", "sign-key", "attest", "attested-html") {
 		return usageError{"options must appear before positional arguments"}
 	}
 
@@ -139,7 +141,55 @@ func commandBuild(args []string, stdout io.Writer) error {
 	})
 }
 
-func flagsAppearAfterPositionals(args []string) bool {
+func commandPublish(args []string, stdout io.Writer) error {
+	if flagsAppearAfterPositionals(args, "out", "host", "user", "port", "path") {
+		return usageError{"options must appear before positional arguments"}
+	}
+
+	fs := flag.NewFlagSet("publish", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	out := fs.String("out", "public", "output directory")
+	noBuild := fs.Bool("no-build", false, "publish existing output without building")
+	unsigned := fs.Bool("unsigned", false, "build unsigned output even when sign_key is configured")
+	host := fs.String("host", "", "SSH host override")
+	user := fs.String("user", "", "SSH user override")
+	port := fs.Int("port", 0, "SSH port override")
+	path := fs.String("path", "", "remote publish path override")
+	dryRun := fs.Bool("dry-run", false, "print publish steps without building or connecting")
+	if err := fs.Parse(args); err != nil {
+		return usageError{err.Error()}
+	}
+	if fs.NArg() > 1 {
+		return usageError{"usage: smol publish [options] [SITE_DIR]"}
+	}
+	siteDir := "."
+	if fs.NArg() == 1 {
+		siteDir = fs.Arg(0)
+	}
+	return PublishSite(PublishOptions{
+		SiteDir:  siteDir,
+		OutDir:   *out,
+		NoBuild:  *noBuild,
+		Unsigned: *unsigned,
+		DryRun:   *dryRun,
+		Host:     *host,
+		User:     *user,
+		Port:     *port,
+		Path:     *path,
+		HostSet:  flagWasSupplied(args, "host"),
+		UserSet:  flagWasSupplied(args, "user"),
+		PortSet:  flagWasSupplied(args, "port"),
+		PathSet:  flagWasSupplied(args, "path"),
+		Stdout:   stdout,
+	})
+}
+
+func flagsAppearAfterPositionals(args []string, valueFlagNames ...string) bool {
+	valueFlags := map[string]bool{}
+	for _, name := range valueFlagNames {
+		valueFlags["--"+name] = true
+		valueFlags["-"+name] = true
+	}
 	seenPositional := false
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -148,7 +198,11 @@ func flagsAppearAfterPositionals(args []string) bool {
 			continue
 		}
 		if !seenPositional && strings.HasPrefix(arg, "-") {
-			if arg == "--out" || arg == "-out" || arg == "--sign-key" || arg == "-sign-key" || arg == "--attest" || arg == "-attest" || arg == "--attested-html" || arg == "-attested-html" {
+			name := arg
+			if eq := strings.IndexByte(name, '='); eq >= 0 {
+				name = name[:eq]
+			}
+			if valueFlags[name] && !strings.Contains(arg, "=") {
 				i++
 			}
 			continue
@@ -182,6 +236,7 @@ Usage:
   smol new page SLUG TITLE
   smol new post SLUG TITLE
   smol build [options] [SITE_DIR]
+  smol publish [options] [SITE_DIR]
   smol help
 
 Init options:
@@ -194,6 +249,16 @@ Build options:
   --attested-html PATH      Backward-compatible signer binary alias.
   --unsigned                Build unsigned HTML even when sign_key is configured.
   --force                   Remove existing output directory before build.
+
+Publish options:
+  --out DIR                 Output directory. Default: public.
+  --no-build                Publish existing output without building.
+  --unsigned                Build unsigned output even when sign_key is configured.
+  --host HOST               SSH host override.
+  --user USER               SSH user override.
+  --port PORT               SSH port override.
+  --path PATH               Remote publish path override.
+  --dry-run                 Print publish steps without building or connecting.
 
 Options must appear before positional arguments.
 `)

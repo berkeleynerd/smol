@@ -47,6 +47,8 @@ cd mysite
 smol new post hello-world "Hello World"
 smol build
 smol build --sign-key FINGERPRINT
+smol publish --dry-run
+smol publish
 ```
 
 Build options must appear before positional arguments:
@@ -100,10 +102,10 @@ public/
 ```
 
 Optional fields include `description`, `language`, `publisher`, `theme`,
-`output_mode`, `sign_key`, and `nav`. If `--sign-key` is supplied, it overrides
-`sign_key` in `smol.json`. Use `--unsigned` to suppress signing even when a key
-is configured. The signing key value is a fingerprint or key ID, not a secret,
-but private signing keys should not be placed in cloud workspaces.
+`output_mode`, `sign_key`, `nav`, and `publish`. If `--sign-key` is supplied,
+it overrides `sign_key` in `smol.json`. Use `--unsigned` to suppress signing
+even when a key is configured. The signing key value is a fingerprint or key ID,
+not a secret, but private signing keys should not be placed in cloud workspaces.
 
 ## Content
 
@@ -170,6 +172,44 @@ Capsule output supports pages only. Each page must use `body_format:
 `index.gmi` for the `index` page and `<slug>.gmi` for other pages. Themes,
 templates, CSS, HTML bodies, Markdown bodies, posts, images, and signing are not
 used by `flat-gemini-v1`.
+
+## Publishing
+
+`smol publish` builds the site, then publishes the output directory over SSH
+using `scp` and remote `ssh` commands. Configure the target in `smol.json`:
+
+```json
+{
+  "format": "smol-site-v1",
+  "title": "Example Site",
+  "base_url": "https://example.org",
+  "publish": {
+    "method": "scp",
+    "host": "example.org",
+    "user": "deploy",
+    "port": 22,
+    "path": "/var/www/example"
+  }
+}
+```
+
+Publishing uses your normal SSH configuration, keys, agent, and `known_hosts`.
+It does not support passwords or secret fields in `smol.json`.
+
+```sh
+smol publish
+smol publish --out public .
+smol publish --no-build
+smol publish --dry-run
+smol publish --host example.org --user deploy --port 2222 --path /var/www/example
+```
+
+By default, `smol publish` performs a clean build of the local output directory,
+uploads that directory to a temporary sibling path on the remote host, then
+swaps it into place. The remote target is replaced rather than overlaid, so
+files removed from the local output disappear remotely. `--no-build` skips the
+build and publishes the existing output directory. `--unsigned` applies only to
+the build phase.
 
 ## Signing
 
