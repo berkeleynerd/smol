@@ -90,6 +90,19 @@ func TestGeminiCapsuleRejectsBadGemtext(t *testing.T) {
 	}
 }
 
+func TestGeminiCapsuleBuildFailureDoesNotWritePartialOutput(t *testing.T) {
+	dir := geminiSite(t, "")
+	writeGeminiPage(t, dir, "aaa", "Good", "This page renders.\n")
+	writeGeminiPage(t, dir, "zzz", "Bad", "=>   \n")
+	err := BuildSite(BuildOptions{SiteDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "invalid gemtext link") {
+		t.Fatalf("expected gemtext validation error, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "public", "aaa.gmi")); !os.IsNotExist(statErr) {
+		t.Fatalf("partial output was written despite later render failure: %v", statErr)
+	}
+}
+
 func geminiSite(t *testing.T, signKey string) string {
 	t.Helper()
 	dir := t.TempDir()

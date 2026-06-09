@@ -53,6 +53,20 @@ func TestImagePathWithDotDotIsRejected(t *testing.T) {
 	}
 }
 
+func TestImageAbsolutePathIsRejected(t *testing.T) {
+	page := Page{Kind: "post", Slug: "x", contentDir: t.TempDir()}
+	if _, _, err := embedImage(page, filepath.Join(string(os.PathSeparator), "tmp", "x.png"), "Alt"); err == nil {
+		t.Fatalf("embedImage accepted absolute path")
+	}
+}
+
+func TestImageAltTextIsRequired(t *testing.T) {
+	page := Page{Kind: "post", Slug: "x", contentDir: t.TempDir()}
+	if _, _, err := embedImage(page, "assets/x.png", ""); err == nil {
+		t.Fatalf("embedImage accepted empty alt text")
+	}
+}
+
 func TestUnsupportedImageExtensionIsRejected(t *testing.T) {
 	dir := t.TempDir()
 	writeText(t, filepath.Join(dir, "assets", "hero.svg"), "<svg></svg>")
@@ -207,6 +221,69 @@ func TestBuildSkipsDrafts(t *testing.T) {
 	buildSite(t, dir)
 	if _, err := os.Stat(filepath.Join(dir, "public", "posts", "draft-post", "index.html")); !os.IsNotExist(err) {
 		t.Fatalf("draft output exists or unexpected stat error: %v", err)
+	}
+}
+
+func TestForceBuildFailurePreservesExistingOutput(t *testing.T) {
+	dir := testSite(t)
+	buildSite(t, dir)
+	outputPath := filepath.Join(dir, "public", "index.html")
+	before := readText(t, outputPath)
+	writeText(t, filepath.Join(dir, "content", "pages", "index", "body.html"), "<script>alert(1)</script>")
+	err := BuildSite(BuildOptions{SiteDir: dir, Force: true})
+	if err == nil || !strings.Contains(err.Error(), "JavaScript is not supported") {
+		t.Fatalf("expected validation failure, got %v", err)
+	}
+	after := readText(t, outputPath)
+	if after != before {
+		t.Fatalf("force build failure changed existing output")
+	}
+}
+
+func TestForceRejectsOutputDirContainingSite(t *testing.T) {
+	dir := testSite(t)
+	err := BuildSite(BuildOptions{SiteDir: dir, OutDir: ".", Force: true})
+	if err == nil || !strings.Contains(err.Error(), "refusing to remove output directory that contains site directory") {
+		t.Fatalf("expected force output guard, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "smol.json")); statErr != nil {
+		t.Fatalf("site was removed or became unreadable: %v", statErr)
+	}
+}
+
+func TestForceRejectsSourceOutputDir(t *testing.T) {
+	dir := testSite(t)
+	err := BuildSite(BuildOptions{SiteDir: dir, OutDir: "content", Force: true})
+	if err == nil || !strings.Contains(err.Error(), "refusing to remove source directory as output") {
+		t.Fatalf("expected source output guard, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "content", "pages", "index", "page.json")); statErr != nil {
+		t.Fatalf("content was removed or became unreadable: %v", statErr)
+	}
+}
+
+func TestBuildRejectsThemePathEscapes(t *testing.T) {
+	tests := map[string]struct {
+		old string
+		new string
+	}{
+		"css": {
+			old: `"assets/style.css"`,
+			new: `"../style.css"`,
+		},
+		"template": {
+			old: `"index": "templates/index.html.tmpl"`,
+			new: `"index": "../index.html.tmpl"`,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := testSite(t)
+			replaceInFile(t, filepath.Join(dir, "themes", "default", "theme.json"), tc.old, tc.new)
+			if err := BuildSite(BuildOptions{SiteDir: dir}); err == nil {
+				t.Fatalf("BuildSite accepted escaping %s path", name)
+			}
+		})
 	}
 }
 

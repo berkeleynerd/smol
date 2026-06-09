@@ -74,6 +74,12 @@ func BuildSite(opts BuildOptions) error {
 	} else if opts.SignKey == "" && !opts.SignKeySource {
 		opts.SignKey = siteCfg.SignKey
 	}
+	outDir := resolveOutputDir(siteDir, opts.OutDir)
+	if opts.Force {
+		if err := validateForceOutputDir(siteDir, outDir); err != nil {
+			return err
+		}
+	}
 	site, err := siteView(siteCfg)
 	if err != nil {
 		return err
@@ -116,16 +122,6 @@ func BuildSite(opts BuildOptions) error {
 			LookPath:      opts.attestLookPath,
 		})
 		if err != nil {
-			return err
-		}
-	}
-
-	outDir := opts.OutDir
-	if !filepath.IsAbs(outDir) {
-		outDir = filepath.Join(siteDir, outDir)
-	}
-	if opts.Force {
-		if err := os.RemoveAll(outDir); err != nil {
 			return err
 		}
 	}
@@ -181,6 +177,11 @@ func BuildSite(opts BuildOptions) error {
 		})
 	}
 
+	if opts.Force {
+		if err := os.RemoveAll(outDir); err != nil {
+			return err
+		}
+	}
 	for _, result := range results {
 		if opts.SignKey == "" {
 			data, err := os.ReadFile(result.tempPath)
@@ -205,6 +206,39 @@ func BuildSite(opts BuildOptions) error {
 		fmt.Fprintln(opts.Stdout, "note: generated unsigned HTML; run with --sign-key to create attested pages")
 	}
 	return nil
+}
+
+func resolveOutputDir(siteDir, outDir string) string {
+	if filepath.IsAbs(outDir) {
+		return filepath.Clean(outDir)
+	}
+	return filepath.Clean(filepath.Join(siteDir, outDir))
+}
+
+func validateForceOutputDir(siteDir, outDir string) error {
+	siteDir = filepath.Clean(siteDir)
+	outDir = filepath.Clean(outDir)
+	if pathWithinOrSame(outDir, siteDir) {
+		return fmt.Errorf("refusing to remove output directory that contains site directory: %s", outDir)
+	}
+	for _, sourceDir := range []string{
+		filepath.Join(siteDir, "content"),
+		filepath.Join(siteDir, "themes"),
+		filepath.Join(siteDir, ".git"),
+	} {
+		if pathWithinOrSame(sourceDir, outDir) {
+			return fmt.Errorf("refusing to remove source directory as output: %s", outDir)
+		}
+	}
+	return nil
+}
+
+func pathWithinOrSame(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []ManifestResource, error) {

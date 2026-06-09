@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -21,26 +20,51 @@ func buildGeminiCapsule(siteDir string, siteCfg SiteConfig, opts BuildOptions) e
 		return fmt.Errorf("flat-gemini-v1 supports only pages")
 	}
 
-	outDir := opts.OutDir
-	if !filepath.IsAbs(outDir) {
-		outDir = filepath.Join(siteDir, outDir)
-	}
+	outDir := resolveOutputDir(siteDir, opts.OutDir)
 	if opts.Force {
-		if err := os.RemoveAll(outDir); err != nil {
+		if err := validateForceOutputDir(siteDir, outDir); err != nil {
 			return err
 		}
 	}
 
+	tempDir, err := os.MkdirTemp(siteDir, ".smol-gemini-build-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	results := []renderResult{}
 	for _, page := range pages {
 		rendered, err := renderGeminiPage(page)
 		if err != nil {
 			return err
 		}
-		finalPath := geminiOutputPathFor(outDir, page.URL)
-		if err := atomicWriteFile(finalPath, []byte(rendered), 0o644); err != nil {
+		tempPath := geminiOutputPathFor(tempDir, page.URL)
+		if err := atomicWriteFile(tempPath, []byte(rendered), 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintf(opts.Stdout, "built: %s\n", cleanSlash(relativeDisplay(siteDir, finalPath)))
+		results = append(results, renderResult{
+			page:      page,
+			route:     page.URL,
+			tempPath:  tempPath,
+			finalPath: geminiOutputPathFor(outDir, page.URL),
+		})
+	}
+
+	if opts.Force {
+		if err := os.RemoveAll(outDir); err != nil {
+			return err
+		}
+	}
+	for _, result := range results {
+		data, err := os.ReadFile(result.tempPath)
+		if err != nil {
+			return err
+		}
+		if err := atomicWriteFile(result.finalPath, data, 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(opts.Stdout, "built: %s\n", cleanSlash(relativeDisplay(siteDir, result.finalPath)))
 	}
 	fmt.Fprintln(opts.Stdout, "note: generated unsigned Gemini capsule; signing for flat-gemini-v1 is not supported yet")
 	return nil

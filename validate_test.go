@@ -38,6 +38,46 @@ func TestFinalHTMLContainingExternalStylesheetIsRejected(t *testing.T) {
 	}
 }
 
+func TestFinalHTMLContainingExternalImageReferencesIsRejected(t *testing.T) {
+	tests := map[string]string{
+		"double quoted src":        `<img src="https://example.org/x.png" alt="x">`,
+		"single quoted src":        `<img src='http://example.org/x.png' alt="x">`,
+		"unquoted src":             `<img src=https://example.org/x.png alt="x">`,
+		"protocol relative src":    `<img src="//example.org/x.png" alt="x">`,
+		"external srcset":          `<img src="data:image/png;base64,AA==" srcset="/x.png 1x, https://example.org/x.png 2x" alt="x">`,
+		"protocol relative srcset": `<img src="data:image/png;base64,AA==" srcset="//example.org/x.png 2x" alt="x">`,
+	}
+	for name, html := range tests {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateHTML(html); err == nil {
+				t.Fatalf("ValidateHTML accepted external image reference")
+			}
+		})
+	}
+}
+
+func TestFinalHTMLAllowsEmbeddedImageDataURL(t *testing.T) {
+	if err := ValidateHTML(`<img src="data:image/png;base64,AA==" alt="x">`); err != nil {
+		t.Fatalf("ValidateHTML rejected embedded image: %v", err)
+	}
+}
+
+func TestFinalHTMLRejectsLocalImageReferences(t *testing.T) {
+	tests := map[string]string{
+		"relative": `<img src="assets/x.png" alt="x">`,
+		"absolute": `<img src="/assets/x.png" alt="x">`,
+		"empty":    `<img src="" alt="x">`,
+		"srcset":   `<img src="data:image/png;base64,AA==" srcset="data:image/png;base64,AA== 1x" alt="x">`,
+	}
+	for name, html := range tests {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateHTML(html); err == nil {
+				t.Fatalf("ValidateHTML accepted local or alternate image reference")
+			}
+		})
+	}
+}
+
 func TestExternalAnchorLinksAreAllowed(t *testing.T) {
 	if err := ValidateHTML(`<a href="https://example.org/">Example</a>`); err != nil {
 		t.Fatalf("ValidateHTML rejected external anchor: %v", err)

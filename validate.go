@@ -8,7 +8,9 @@ import (
 
 var eventHandlerRE = regexp.MustCompile(`(?i)(^|[^a-zA-Z0-9_-])on[a-zA-Z0-9_-]*\s*=`)
 var externalLinkRE = regexp.MustCompile(`(?is)<link\s+[^>]*rel\s*=\s*['"]?(stylesheet|preload|modulepreload|prefetch|preconnect)\b`)
-var externalImgRE = regexp.MustCompile(`(?is)<img\s+[^>]*src\s*=\s*['"]https?:`)
+var imgTagRE = regexp.MustCompile(`(?is)<img\b[^>]*>`)
+var imgSrcAttrRE = regexp.MustCompile(`(?is)\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
+var imgSrcsetAttrRE = regexp.MustCompile(`(?is)\bsrcset\s*=`)
 var canonicalCheckboxRE = regexp.MustCompile(`<input type="checkbox" id="cb[0-9]+" />`)
 var externalSVGRefRE = regexp.MustCompile(`(?is)<(use|image)\b[^>]*(?:href|xlink:href)\s*=\s*['"]?(https?:|//)`)
 
@@ -51,8 +53,8 @@ func ValidateHTMLForMode(html, outputMode string) error {
 	if m := externalLinkRE.FindString(html); m != "" {
 		return fmt.Errorf("external resources are not supported: found %s", compactTag(m))
 	}
-	if externalImgRE.MatchString(html) {
-		return fmt.Errorf(`external resources are not supported: found <img src="http:">`)
+	if err := validateEmbeddedImages(html); err != nil {
+		return err
 	}
 	if externalSVGRefRE.MatchString(html) {
 		return fmt.Errorf("external resources are not supported: found external SVG reference")
@@ -63,6 +65,32 @@ func ValidateHTMLForMode(html, outputMode string) error {
 		}
 	}
 	return nil
+}
+
+func validateEmbeddedImages(html string) error {
+	for _, tag := range imgTagRE.FindAllString(html, -1) {
+		if imgSrcsetAttrRE.MatchString(tag) {
+			return fmt.Errorf("external resources are not supported: found <img srcset>")
+		}
+		src := imageSrc(tag)
+		if src == "" || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(src)), "data:") {
+			return fmt.Errorf("external resources are not supported: found non-embedded <img src>")
+		}
+	}
+	return nil
+}
+
+func imageSrc(tag string) string {
+	match := imgSrcAttrRE.FindStringSubmatch(tag)
+	if match == nil {
+		return ""
+	}
+	for _, value := range match[1:] {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func ValidateCSS(css string) error {
