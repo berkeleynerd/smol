@@ -1,0 +1,218 @@
+[
+  {
+    "name": "explicit-navigation-default-html",
+    "output_mode": "",
+    "action": "build",
+    "expect": "pass",
+    "starter": "default",
+    "fixture": "valid/explicit-navigation-default-html",
+    "assertions": [
+      {
+        "file": "public/about/index.html",
+        "contains": [
+          "<body id=\"top\">",
+          "<main id=\"content\" data-smol-authored-content=\"true\">",
+          "<nav data-smol-generated-chrome=\"navigation\" aria-label=\"Page navigation\">",
+          "<a href=\"#top\" rel=\"top\">Top</a>",
+          "<a href=\"../index.html\" rel=\"home\">Home</a>",
+          "<a href=\"../index.html\" rel=\"up\">Up: Home</a>",
+          "<a href=\"../sample/\" rel=\"next\">Next: Sample</a>",
+          "<a href=\"../reference/\" rel=\"related\">Related: Reference</a>"
+        ],
+        "region": {
+          "start": "<main id=\"content\" data-smol-authored-content=\"true\">",
+          "end": "\n  </main>",
+          "contains": [
+            "<p>About body.</p>"
+          ],
+          "not_contains": [
+            "data-smol-generated-chrome",
+            "Next: Sample"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "explicit-navigation-flat-xhtml",
+    "output_mode": "flat-xhtml-v1",
+    "action": "build",
+    "expect": "pass",
+    "starter": "classic-xhtml",
+    "fixture": "valid/explicit-navigation-flat-xhtml",
+    "assertions": [
+      {
+        "file": "public/sample.html",
+        "contains": [
+          "<body id=\"top\">",
+          "<main id=\"content\" data-smol-authored-content=\"true\">",
+          "<nav data-smol-generated-chrome=\"navigation\" aria-label=\"Page navigation\">",
+          "<a href=\"#top\" rel=\"top\">Top</a>",
+          "<a href=\"index.html\" rel=\"home\">Home</a>",
+          "<a href=\"about.html\" rel=\"up\">Up: About</a>",
+          "<a href=\"index.html\" rel=\"previous\">Previous: Home</a>",
+          "<a href=\"about.html\" rel=\"related\">Related: About</a>"
+        ],
+        "not_contains": [
+          "href=\"/\"",
+          "SMOL ATTESTED MANIFEST V1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "explicit-navigation-gemini",
+    "output_mode": "flat-gemini-v1",
+    "action": "build",
+    "expect": "pass",
+    "fixture": "valid/explicit-navigation-gemini",
+    "assertions": [
+      {
+        "file": "public/lament.gmi",
+        "contains": [
+          "=> index.gmi Home",
+          "=> essays.gmi Up: Essays",
+          "=> kore.gmi Previous: Kore",
+          "=> parable-of-old-stone.gmi Next: Parable of Old Stone",
+          "=> index.gmi Related: Home"
+        ],
+        "not_contains": [
+          "#top",
+          "SMOL ATTESTED MANIFEST V1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "no-links-default-html-byte-boundary",
+    "output_mode": "",
+    "action": "build",
+    "expect": "pass",
+    "starter": "default",
+    "assertions": [
+      {
+        "file": "public/index.html",
+        "contains": [
+          "</main>\n\n  <footer>",
+          "SMOL ATTESTED MANIFEST V1"
+        ],
+        "not_contains": [
+          "</main>\n\n\n  <footer>"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "no-links-flat-xhtml-byte-boundary",
+    "output_mode": "flat-xhtml-v1",
+    "action": "build",
+    "expect": "pass",
+    "starter": "classic-xhtml",
+    "assertions": [
+      {
+        "file": "public/sample.html",
+        "contains": [
+          "</main>\n</body>"
+        ],
+        "not_contains": [
+          "</main>\n\n</body>",
+          "SMOL ATTESTED MANIFEST V1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "no-links-gemini-byte-boundary",
+    "output_mode": "flat-gemini-v1",
+    "action": "build",
+    "expect": "pass",
+    "fixture": "valid/no-links-gemini-byte-boundary",
+    "assertions": [
+      {
+        "file": "public/index.gmi",
+        "exact": "# Home\n\nWelcome.\n",
+        "not_contains": [
+          "=> ",
+          "#top",
+          "SMOL ATTESTED MANIFEST V1"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "unknown-link-target",
+    "output_mode": "",
+    "action": "load",
+    "expect": "fail",
+    "fixture": "invalid/unknown-link-target",
+    "error_substring": "unknown target slug"
+  },
+  {
+    "name": "post-slug-link-target",
+    "output_mode": "",
+    "action": "load",
+    "expect": "fail",
+    "fixture": "invalid/post-slug-link-target",
+    "error_substring": "unknown target slug"
+  },
+  {
+    "name": "draft-link-target",
+    "output_mode": "",
+    "action": "load",
+    "expect": "fail",
+    "fixture": "invalid/draft-link-target",
+    "error_substring": "targets draft page"
+  },
+  {
+    "name": "self-link-up",
+    "output_mode": "",
+    "action": "load",
+    "expect": "fail",
+    "fixture": "invalid/self-link-up",
+    "error_substring": "cannot target itself"
+  },
+  {
+    "name": "duplicate-related",
+    "output_mode": "",
+    "action": "load",
+    "expect": "fail",
+    "fixture": "invalid/duplicate-related",
+    "error_substring": "duplicate related link target"
+  },
+  {
+    "name": "javascript-in-body",
+    "output_mode": "",
+    "action": "build",
+    "expect": "fail",
+    "starter": "default",
+    "fixture": "invalid/javascript-in-body",
+    "error_substring": "JavaScript is not supported"
+  },
+  {
+    "name": "javascript-in-chrome",
+    "output_mode": "",
+    "action": "build",
+    "expect": "fail",
+    "starter": "default",
+    "fixture": "invalid/javascript-in-chrome",
+    "error_substring": "JavaScript is not supported"
+  },
+  {
+    "name": "external-html-image",
+    "output_mode": "",
+    "action": "build",
+    "expect": "fail",
+    "starter": "default",
+    "fixture": "invalid/external-html-image",
+    "error_substring": "external resources are not supported"
+  },
+  {
+    "name": "external-resource-in-chrome",
+    "output_mode": "",
+    "action": "build",
+    "expect": "fail",
+    "starter": "default",
+    "fixture": "invalid/external-resource-in-chrome",
+    "error_substring": "external resources are not supported"
+  }
+]

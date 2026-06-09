@@ -12,7 +12,8 @@ capsules from Gemtext or Markdown source.
 - Emits flat Gemini capsules from `gemtext-v1` and `markdown-xhtml-v1` pages.
 - Embeds supported local images as `data:` URLs through `{{image}}` and Markdown images.
 - Renders constrained Markdown/XHTML and Gemtext source bodies for HTML output.
-- Adds a `SMOL ATTESTED MANIFEST V1` comment inside the signed payload.
+- Adds a `SMOL ATTESTED MANIFEST V1` comment to nested HTML output inside the
+  signed payload.
 - Automatically calls `attest` / `attested-html sign` as the final build step
   when a signing key is configured and a signer is discoverable.
 
@@ -142,6 +143,8 @@ self-links, duplicate `related` targets, and external URLs are rejected. Themes
 can render the resolved links with `.PageNav`; the starter themes render them as
 generated navigation chrome outside the authored content body. This is
 structural isolation only: signed HTML still covers the full generated page.
+See `docs/smol-static-nojs-v1.md` for the output profile contract and
+`docs/smol-attested-manifest-v1.md` for manifest fields.
 
 `body.html` is an HTML fragment. It may use only the fixed body functions:
 

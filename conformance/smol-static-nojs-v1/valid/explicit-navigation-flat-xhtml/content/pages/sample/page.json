@@ -1,0 +1,17 @@
+{
+  "format": "smol-page-v1",
+  "kind": "page",
+  "title": "Sample Page",
+  "slug": "sample",
+  "summary": "A sample Markdown/XHTML page.",
+  "published_utc": "",
+  "updated_utc": "",
+  "tags": [],
+  "draft": false,
+  "body_format": "markdown-xhtml-v1",
+  "links": {
+    "up": "about",
+    "previous": "index",
+    "related": ["about"]
+  }
+}

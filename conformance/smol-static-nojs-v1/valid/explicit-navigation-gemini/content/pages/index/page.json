@@ -1,0 +1,12 @@
+{
+  "format": "smol-page-v1",
+  "kind": "page",
+  "title": "Home",
+  "slug": "index",
+  "summary": "",
+  "published_utc": "",
+  "updated_utc": "",
+  "tags": [],
+  "draft": false,
+  "body_format": "gemtext-v1"
+}

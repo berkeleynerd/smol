@@ -1,0 +1,11 @@
+{
+  "format": "smol-site-v1",
+  "title": "No Links Capsule",
+  "description": "A link-free Gemini conformance fixture.",
+  "language": "en",
+  "base_url": "gemini://example.org",
+  "publisher": "Conformance",
+  "output_mode": "flat-gemini-v1",
+  "sign_key": "",
+  "nav": []
+}
