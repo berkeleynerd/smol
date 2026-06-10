@@ -46,6 +46,28 @@ func writeBytes(t *testing.T, path string, value []byte) {
 	}
 }
 
+func writeContentSource(t *testing.T, siteDir, kind, slug, ext string, fields []string, body string) string {
+	t.Helper()
+	base := "pages"
+	if kind == "post" {
+		base = "posts"
+	}
+	path := filepath.Join(siteDir, "content", base, slug+ext)
+	writeText(t, path, contentSource(fields, body))
+	return path
+}
+
+func writeContentBundleSource(t *testing.T, siteDir, kind, slug, ext string, fields []string, body string) string {
+	t.Helper()
+	base := "pages"
+	if kind == "post" {
+		base = "posts"
+	}
+	path := filepath.Join(siteDir, "content", base, slug, "index"+ext)
+	writeText(t, path, contentSource(fields, body))
+	return path
+}
+
 func buildSite(t *testing.T, dir string) string {
 	t.Helper()
 	var out strings.Builder

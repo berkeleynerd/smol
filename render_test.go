@@ -11,13 +11,10 @@ import (
 
 func TestBodyHTMLRendersWithImage(t *testing.T) {
 	dir := testSite(t)
-	if err := NewContent(dir, "post", "hello-world", "Hello World"); err != nil {
-		t.Fatalf("NewContent: %v", err)
-	}
 	postDir := filepath.Join(dir, "content", "posts", "hello-world")
 	imageBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 	writeBytes(t, filepath.Join(postDir, "assets", "hero.png"), imageBytes)
-	writeText(t, filepath.Join(postDir, "body.html"), `{{image "assets/hero.png" "Hero image"}}`)
+	writeContentBundleSource(t, dir, "post", "hello-world", ".html", []string{"title: Hello World"}, `{{image "assets/hero.png" "Hero image"}}`)
 
 	siteCfg, err := LoadSiteConfig(dir)
 	if err != nil {
@@ -51,7 +48,7 @@ func TestMarkdownBodyEmbedsImageAndRecordsManifest(t *testing.T) {
 	pageDir := filepath.Join(dir, "content", "pages", "index")
 	imageBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 	writeBytes(t, filepath.Join(pageDir, "assets", "hero.png"), imageBytes)
-	writeMarkdownIndex(t, dir, `![Hero image](assets/hero.png "Hero title")`)
+	writeMarkdownIndexBundle(t, dir, `![Hero image](assets/hero.png "Hero title")`)
 	buildSite(t, dir)
 	html := readText(t, filepath.Join(dir, "public", "index.html"))
 	if !strings.Contains(html, `src="data:image/png;base64,`) || strings.Contains(html, `src="assets/hero.png"`) {
@@ -89,15 +86,22 @@ func TestMarkdownImagePolicyErrors(t *testing.T) {
 			want: "remote markdown images are not supported",
 		},
 		"path traversal": {
-			body: "![Escape](../hero.png)",
-			want: "image path escapes content directory",
+			body:  "![Escape](../hero.png)",
+			setup: func(string) {},
+			want:  "image path escapes content directory",
 		},
 		"absolute path": {
-			body: "![Escape](/tmp/hero.png)",
-			want: "image path escapes content directory",
+			body:  "![Escape](/tmp/hero.png)",
+			setup: func(string) {},
+			want:  "image path escapes content directory",
 		},
 		"missing file": {
 			body: "![Missing](assets/missing.png)",
+			setup: func(pageDir string) {
+				if err := os.MkdirAll(filepath.Join(pageDir, "assets"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
 			want: "no such file or directory",
 		},
 		"unsupported svg": {
@@ -114,13 +118,24 @@ func TestMarkdownImagePolicyErrors(t *testing.T) {
 			pageDir := filepath.Join(dir, "content", "pages", "index")
 			if tc.setup != nil {
 				tc.setup(pageDir)
+				writeMarkdownIndexBundle(t, dir, tc.body)
+			} else {
+				writeMarkdownIndex(t, dir, tc.body)
 			}
-			writeMarkdownIndex(t, dir, tc.body)
 			err := BuildSite(BuildOptions{SiteDir: dir})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("BuildSite error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestFlatMarkdownImageRequiresBundle(t *testing.T) {
+	dir := testSite(t)
+	writeMarkdownIndex(t, dir, "![Missing](assets/missing.png)")
+	err := BuildSite(BuildOptions{SiteDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "local images require bundle form") {
+		t.Fatalf("BuildSite error = %v, want bundle-required image error", err)
 	}
 }
 
@@ -142,6 +157,14 @@ func TestImageAltTextIsRequired(t *testing.T) {
 	page := Page{Kind: "post", Slug: "x", contentDir: t.TempDir()}
 	if _, _, err := embedImage(page, "assets/x.png", ""); err == nil {
 		t.Fatalf("embedImage accepted empty alt text")
+	}
+}
+
+func TestRenderPageBodyFailsClosedWhenBodyIsMissing(t *testing.T) {
+	page := Page{Kind: "page", Slug: "index", BodyFormat: bodyFormatHTML, bodyPath: "index.html"}
+	_, _, err := renderPageBody(page, SiteView{}, nil)
+	if err == nil || !strings.Contains(err.Error(), "content body was not loaded") {
+		t.Fatalf("renderPageBody error = %v, want body-not-loaded error", err)
 	}
 }
 
@@ -183,29 +206,28 @@ func TestBuildRejectsCSSURL(t *testing.T) {
 
 func TestBuildRejectsScriptInBody(t *testing.T) {
 	dir := testSite(t)
-	writeText(t, filepath.Join(dir, "content", "pages", "index", "body.html"), "<script>alert(1)</script>")
+	writeContentSource(t, dir, "page", "index", ".html", []string{"title: Home"}, "<script>alert(1)</script>")
 	if err := BuildSite(BuildOptions{SiteDir: dir}); err == nil {
 		t.Fatalf("BuildSite accepted script body")
 	}
 }
 
-func TestBuildRejectsKindMismatch(t *testing.T) {
+func TestBuildRejectsUnsupportedContentFile(t *testing.T) {
 	dir := testSite(t)
-	metaPath := filepath.Join(dir, "content", "pages", "index", "page.json")
-	meta := readText(t, metaPath)
-	writeText(t, metaPath, strings.Replace(meta, `"kind": "page"`, `"kind": "post"`, 1))
-	if err := BuildSite(BuildOptions{SiteDir: dir}); err == nil {
-		t.Fatalf("BuildSite accepted kind mismatch")
+	writeText(t, filepath.Join(dir, "content", "pages", "notes.txt"), "notes\n")
+	err := BuildSite(BuildOptions{SiteDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "unsupported content file") {
+		t.Fatalf("BuildSite error = %v, want unsupported content file", err)
 	}
 }
 
-func TestBuildRejectsSlugMismatch(t *testing.T) {
+func TestBuildRejectsFlatBundleCollision(t *testing.T) {
 	dir := testSite(t)
-	metaPath := filepath.Join(dir, "content", "pages", "index", "page.json")
-	meta := readText(t, metaPath)
-	writeText(t, metaPath, strings.Replace(meta, `"slug": "index"`, `"slug": "home"`, 1))
-	if err := BuildSite(BuildOptions{SiteDir: dir}); err == nil {
-		t.Fatalf("BuildSite accepted slug mismatch")
+	writeContentSource(t, dir, "page", "about", ".md", []string{"title: About"}, "About.\n")
+	writeContentBundleSource(t, dir, "page", "about", ".md", []string{"title: About Bundle"}, "About bundle.\n")
+	err := BuildSite(BuildOptions{SiteDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "content slug collision") {
+		t.Fatalf("BuildSite error = %v, want slug collision", err)
 	}
 }
 
@@ -324,7 +346,7 @@ func TestForceBuildFailurePreservesExistingOutput(t *testing.T) {
 	buildSite(t, dir)
 	outputPath := filepath.Join(dir, "public", "index.html")
 	before := readText(t, outputPath)
-	writeText(t, filepath.Join(dir, "content", "pages", "index", "body.html"), "<script>alert(1)</script>")
+	writeContentSource(t, dir, "page", "index", ".html", []string{"title: Home"}, "<script>alert(1)</script>")
 	err := BuildSite(BuildOptions{SiteDir: dir, Force: true})
 	if err == nil || !strings.Contains(err.Error(), "JavaScript is not supported") {
 		t.Fatalf("expected validation failure, got %v", err)
@@ -352,7 +374,7 @@ func TestForceRejectsSourceOutputDir(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "refusing to remove source directory as output") {
 		t.Fatalf("expected source output guard, got %v", err)
 	}
-	if _, statErr := os.Stat(filepath.Join(dir, "content", "pages", "index", "page.json")); statErr != nil {
+	if _, statErr := os.Stat(filepath.Join(dir, "content", "pages", "index.html")); statErr != nil {
 		t.Fatalf("content was removed or became unreadable: %v", statErr)
 	}
 }
@@ -384,13 +406,10 @@ func TestBuildRejectsThemePathEscapes(t *testing.T) {
 
 func TestManifestRecordsCSSAndImageHashes(t *testing.T) {
 	dir := testSite(t)
-	if err := NewContent(dir, "post", "hello-world", "Hello World"); err != nil {
-		t.Fatalf("NewContent: %v", err)
-	}
 	postDir := filepath.Join(dir, "content", "posts", "hello-world")
 	imageBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 	writeBytes(t, filepath.Join(postDir, "assets", "hero.png"), imageBytes)
-	writeText(t, filepath.Join(postDir, "body.html"), `{{image "assets/hero.png" "Hero image"}}`)
+	writeContentBundleSource(t, dir, "post", "hello-world", ".html", []string{"title: Hello World"}, `{{image "assets/hero.png" "Hero image"}}`)
 	buildSite(t, dir)
 	html := readText(t, filepath.Join(dir, "public", "posts", "hello-world", "index.html"))
 	manifest := decodeManifestMap(t, html)
@@ -420,41 +439,32 @@ func TestManifestRecordsCSSAndImageHashes(t *testing.T) {
 
 func writePost(t *testing.T, dir, slug, title, published string, draft bool) {
 	t.Helper()
-	postDir := filepath.Join(dir, "content", "posts", slug)
-	draftValue := "false"
-	if draft {
-		draftValue = "true"
+	fields := []string{"title: " + quoteFrontMatterString(title)}
+	if published != "" {
+		fields = append(fields, "published_utc: "+published, "updated_utc: "+published)
 	}
-	writeText(t, filepath.Join(postDir, "page.json"), `{
-  "format": "smol-page-v1",
-  "kind": "post",
-  "title": "`+title+`",
-  "slug": "`+slug+`",
-  "summary": "",
-  "published_utc": "`+published+`",
-  "updated_utc": "`+published+`",
-  "tags": [],
-  "draft": `+draftValue+`
-}
-`)
-	writeText(t, filepath.Join(postDir, "body.html"), "<p>Post.</p>\n")
+	if draft {
+		fields = append(fields, "draft: true")
+	}
+	writeContentSource(t, dir, "post", slug, ".html", fields, "<p>Post.</p>\n")
 }
 
 func writeMarkdownIndex(t *testing.T, dir, body string) {
 	t.Helper()
-	pageDir := filepath.Join(dir, "content", "pages", "index")
-	writeText(t, filepath.Join(pageDir, "page.json"), `{
-  "format": "smol-page-v1",
-  "kind": "page",
-  "title": "Home",
-  "slug": "index",
-  "summary": "Home page.",
-  "published_utc": "",
-  "updated_utc": "",
-  "tags": [],
-  "draft": false,
-  "body_format": "markdown-xhtml-v1"
+	removeStarterIndexHTML(t, dir)
+	writeContentSource(t, dir, "page", "index", ".md", []string{"title: Home", "summary: Home page."}, body+"\n")
 }
-`)
-	writeText(t, filepath.Join(pageDir, "body.md"), body+"\n")
+
+func writeMarkdownIndexBundle(t *testing.T, dir, body string) {
+	t.Helper()
+	removeStarterIndexHTML(t, dir)
+	writeContentBundleSource(t, dir, "page", "index", ".md", []string{"title: Home", "summary: Home page."}, body+"\n")
+}
+
+func removeStarterIndexHTML(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "content", "pages", "index.html")
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("Remove(%s): %v", path, err)
+	}
 }

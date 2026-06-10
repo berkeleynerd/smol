@@ -84,12 +84,26 @@ Paragraph with [docs](https://example.org), *emphasis*, and `+"`code`"+`.
 	}
 }
 
+func TestRenderGeminiPageFailsClosedWhenBodyIsMissing(t *testing.T) {
+	page := Page{Kind: "page", Slug: "index", BodyFormat: bodyFormatGemtext, bodyPath: "index.gmi"}
+	_, err := renderGeminiPage(page)
+	if err == nil || !strings.Contains(err.Error(), "content body was not loaded") {
+		t.Fatalf("renderGeminiPage error = %v, want body-not-loaded error", err)
+	}
+}
+
 func TestGeminiCapsuleRendersExplicitPageNavigation(t *testing.T) {
 	dir := geminiSite(t, "")
 	writeGeminiPage(t, dir, "index", "Home", "Welcome.\n")
 	writeGeminiPage(t, dir, "essays", "Essays", "Essays.\n")
 	writeGeminiPage(t, dir, "kore", "Kore", "Kore.\n")
-	writeGeminiPageWithLinks(t, dir, "lament", "Lament", "Lament.\n", `"links": {"up": "essays", "previous": "kore", "next": "parable-of-old-stone", "related": ["index"]}`)
+	writeGeminiPageWithLinks(t, dir, "lament", "Lament", "Lament.\n", []string{
+		"links:",
+		"  up: essays",
+		"  previous: kore",
+		"  next: parable-of-old-stone",
+		"  related: [index]",
+	})
 	writeGeminiPage(t, dir, "parable-of-old-stone", "Parable of Old Stone", "Stone.\n")
 	if err := BuildSite(BuildOptions{SiteDir: dir}); err != nil {
 		t.Fatalf("BuildSite: %v", err)
@@ -113,20 +127,7 @@ func TestGeminiCapsuleRendersExplicitPageNavigation(t *testing.T) {
 
 func TestGeminiCapsuleRejectsHTMLBody(t *testing.T) {
 	dir := geminiSite(t, "")
-	pageDir := filepath.Join(dir, "content", "pages", "index")
-	writeText(t, filepath.Join(pageDir, "page.json"), `{
-  "format": "smol-page-v1",
-  "kind": "page",
-  "title": "Capsule",
-  "slug": "index",
-  "summary": "",
-  "published_utc": "",
-  "updated_utc": "",
-  "tags": [],
-  "draft": false
-}
-`)
-	writeText(t, filepath.Join(pageDir, "body.html"), "<p>Welcome.</p>\n")
+	writeContentSource(t, dir, "page", "index", ".html", []string{"title: Capsule"}, "<p>Welcome.</p>\n")
 	err := BuildSite(BuildOptions{SiteDir: dir})
 	if err == nil || !strings.Contains(err.Error(), "flat-gemini-v1 supports only markdown-xhtml-v1 or gemtext-v1 bodies") {
 		t.Fatalf("expected body format rejection, got %v", err)
@@ -175,47 +176,16 @@ func geminiSite(t *testing.T, signKey string) string {
 
 func writeGeminiPage(t *testing.T, dir, slug, title, body string) {
 	t.Helper()
-	writeGeminiPageWithLinks(t, dir, slug, title, body, "")
+	writeGeminiPageWithLinks(t, dir, slug, title, body, nil)
 }
 
-func writeGeminiPageWithLinks(t *testing.T, dir, slug, title, body, links string) {
+func writeGeminiPageWithLinks(t *testing.T, dir, slug, title, body string, links []string) {
 	t.Helper()
-	linkBlock := ""
-	if links != "" {
-		linkBlock = ",\n  " + links
-	}
-	pageDir := filepath.Join(dir, "content", "pages", slug)
-	writeText(t, filepath.Join(pageDir, "page.json"), `{
-  "format": "smol-page-v1",
-  "kind": "page",
-  "title": "`+title+`",
-  "slug": "`+slug+`",
-  "summary": "",
-  "published_utc": "",
-  "updated_utc": "",
-  "tags": [],
-  "draft": false,
-  "body_format": "gemtext-v1"`+linkBlock+`
-}
-`)
-	writeText(t, filepath.Join(pageDir, "body.gmi"), body)
+	fields := append([]string{"title: " + quoteFrontMatterString(title)}, links...)
+	writeContentSource(t, dir, "page", slug, ".gmi", fields, body)
 }
 
 func writeMarkdownGeminiPage(t *testing.T, dir, slug, title, body string) {
 	t.Helper()
-	pageDir := filepath.Join(dir, "content", "pages", slug)
-	writeText(t, filepath.Join(pageDir, "page.json"), `{
-  "format": "smol-page-v1",
-  "kind": "page",
-  "title": "`+title+`",
-  "slug": "`+slug+`",
-  "summary": "",
-  "published_utc": "",
-  "updated_utc": "",
-  "tags": [],
-  "draft": false,
-  "body_format": "markdown-xhtml-v1"
-}
-`)
-	writeText(t, filepath.Join(pageDir, "body.md"), body)
+	writeContentSource(t, dir, "page", slug, ".md", []string{"title: " + quoteFrontMatterString(title)}, body)
 }

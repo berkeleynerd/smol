@@ -83,10 +83,13 @@ Markdown elements.
 smol.json
 content/
   pages/
-    index/
-      page.json
-      body.html
+    index.html
+    about.md
+    sample/
+      index.md
+      assets/
   posts/
+    hello-world.md
 themes/
   default/
     theme.json
@@ -117,32 +120,84 @@ not be placed in cloud workspaces.
 
 ## Content
 
-Each page or post has `page.json` and `body.html` by default:
+Pages and posts are source files under `content/pages/` and `content/posts/`.
+The filename is the slug, and the extension selects the source format:
 
-```json
-{
-  "format": "smol-page-v1",
-  "kind": "post",
-  "title": "Hello World",
-  "slug": "hello-world",
-  "summary": "A first signed page.",
-  "published_utc": "2026-06-07T00:00:00Z",
-  "updated_utc": "2026-06-07T00:00:00Z",
-  "tags": ["attestation"],
-  "draft": false
-}
+```text
+content/pages/index.html
+content/pages/about.md
+content/posts/hello-world.md
 ```
 
-Pages may declare explicit page-navigation links:
+Extensions are matched case-insensitively, so `about.MD` is accepted. Slugs
+still use the filename before the extension and must match smol's lowercase slug
+rule, so `About.MD` is rejected as slug `About`.
 
-```json
-"links": {
-  "up": "essays",
-  "previous": "kore",
-  "next": "lament",
-  "related": ["parable-of-old-stone"]
-}
+Local images require bundle form so assets have a page-local directory:
+
+```text
+content/pages/sample/
+  index.md
+  assets/hero.png
 ```
+
+A bundle may contain exactly one `index.html`, `index.md`, or `index.gmi`
+source file, matched case-insensitively. Other root files with source extensions
+inside the bundle are rejected. Non-source files and subdirectories are treated
+as local assets; nested `child/index.md` files are not discovered as pages.
+
+Source files may begin with small front matter:
+
+```md
+---
+title: Hello World
+summary: A first signed page.
+published: 2026-06-07T00:00:00Z
+updated: 2026-06-07T00:00:00Z
+tags: [attestation]
+draft: false
+links:
+  up: essays
+  previous: kore
+  next: lament
+  related: [parable-of-old-stone]
+---
+Write your page here.
+```
+
+Front matter is intentionally small and is not YAML. After the closing fence,
+the body is read byte-for-byte; no blank line is stripped or added. The accepted
+grammar is:
+
+| Construct | Accepted syntax |
+| --- | --- |
+| Leading BOM | One leading UTF-8 BOM is stripped before parsing or rendering. |
+| Opening fence | First non-BOM bytes must be `---` with optional trailing spaces or tabs, followed by LF, CRLF, or EOF. EOF form is treated as unclosed front matter. |
+| Closing fence | Line is `---` or `...` with optional trailing spaces or tabs, followed by LF, CRLF, or EOF. |
+| Leading blank before fence | Not front matter; the entire file is body content. |
+| Line endings | LF and CRLF are accepted. CR-only front matter is rejected. |
+| Quoted keys | Surrounding matched `'...'` or `"..."` is stripped before key recognition; keys may not contain whitespace. |
+| Unknown top-level keys | Ignored, including inline values, indented child blocks, key-indent list items, and nested maps. |
+| Recognized nested under unknown | Top-level smol keys nested under unknown metadata are rejected so safety fields such as `draft` are not silently ignored. |
+| Scalars | Bare strings, double-quoted JSON strings, and single-quoted strings. |
+| Bare scalars starting with `'` | Parsed as single-quoted and must close; use double quotes or doubled apostrophes for leading apostrophe text. |
+| Single quotes | `''` becomes `'`; backslashes are literal; trailing text after the closing quote is rejected. |
+| Lists | Inline `[a, "b, c", 'd']` or block lists at/deeper than the key indentation. Quotes delimit inline items only when they start an item, so apostrophes inside bare items are literal. Empty inline list `[]` is valid; bare `tags:` with no items is rejected. Top-level block lists are flat. The first non-list line ends a block list. |
+| Links | `links` is a strict block map with `up`, `previous`, `next`, and `related`; those subkeys are not top-level keys and are not guarded inside unknown foreign blocks. |
+| Dates | RFC3339 timestamps are accepted unchanged. Bare `YYYY-MM-DD` dates are normalized to midnight UTC. Empty date fields are treated as omitted. Other date formats are rejected. |
+| JSON fields | `header` and `toc_columns` must be compact single-line JSON arrays. |
+| Comments | Unsupported; `#` is literal text. |
+| Booleans | `true` and `false` are accepted case-insensitively. |
+
+Recognized keys must be top-level. Duplicate recognized keys and malformed
+recognized values are errors. `published`/`updated` are aliases for the internal
+`published_utc`/`updated_utc` fields; do not specify both forms for the same
+field.
+
+If `title` is absent, `index` becomes `Home` and other slugs are humanized, for
+example `hello-world` becomes `Hello World`. The first Markdown `# Heading` is
+not inspected. Use explicit `title` front matter when exact casing matters, such
+as acronyms or proper nouns.
 
 Link values are page slugs only. Post slugs, draft pages, unknown slugs,
 self-links, duplicate `related` targets, and external URLs are rejected. Themes
@@ -154,7 +209,20 @@ comes from the whole-page attested signature.
 See `docs/smol-static-nojs-v1.md` for the output profile contract and
 `docs/smol-attested-manifest-v1.md` for manifest fields.
 
-`body.html` is an HTML fragment. It may use only the fixed body functions:
+Advanced classic XHTML fields remain available as front matter. `header` and
+`toc_columns` use compact single-line JSON values rather than general YAML
+objects:
+
+```md
+---
+title: Sample
+header: [{"level":1,"html":"Sample"}]
+toc_columns: [[{"href":"#x","html":"X"}]]
+---
+```
+
+HTML source files use `.html` and contain an HTML fragment. They may use only
+the fixed body functions:
 
 ```html
 <p>Hello.</p>
@@ -163,10 +231,11 @@ See `docs/smol-static-nojs-v1.md` for the output profile contract and
 ```
 
 Supported image types are PNG, JPG, JPEG, GIF, WebP, and AVIF. SVG is not
-supported in v0. Images are read only from the content directory and embedded as
-data URLs.
+supported in v0. Images are read only from the bundle directory and embedded as
+data URLs. Flat files do not have a local asset directory, so `{{image}}` and
+Markdown images require bundle form.
 
-The optional `markdown-xhtml-v1` body format reads `body.md`. It is a
+Markdown source files use `.md` and render as `markdown-xhtml-v1`. It is a
 constrained Markdown/XHTML dialect, not full CommonMark or GFM. Normal text is
 HTML-escaped. Supported Markdown includes paragraphs, ATX headings, Setext
 headings, inline links, local embedded images, emphasis, strong text, inline
@@ -186,7 +255,8 @@ Markdown images use this form:
 ```
 
 Markdown images must be local files under the page or post content directory,
-matching the `{{image}}` content lookup policy. Remote image URLs, protocol
+matching the `{{image}}` content lookup policy. Use bundle form when a Markdown
+file references a local image. Remote image URLs, protocol
 relative URLs, absolute paths, path traversal, missing files, unsupported
 extensions, and SVG are rejected. Supported image types are PNG, JPG, JPEG, GIF,
 WebP, and AVIF. Images are embedded as `data:` URLs in the generated XHTML. In
@@ -197,19 +267,19 @@ The `classic-xhtml` starter stylesheet covers links, images, emphasis, strong
 text, inline code, code blocks, ordered lists, unordered lists, task lists,
 blockquotes, tables, horizontal rules, and headings with small static CSS rules.
 
-The optional `gemtext-v1` body format reads `body.gmi`. In HTML output modes it
+Gemtext source files use `.gmi` and render as `gemtext-v1`. In HTML output modes it
 renders Gemtext line types to constrained XHTML. In `flat-gemini-v1` output mode
 it emits Gemini capsule pages directly. Supported Gemtext includes text lines,
 blank lines, `#`/`##`/`###` headings, `=>` links, `* ` list items, `>` quotes,
 and fenced preformatted blocks.
 
-### Source and output formats
+### Source And Output Formats
 
-| Source body format | HTML/XHTML output | `flat-gemini-v1` output |
-| --- | --- | --- |
-| `html` / `body.html` | Rendered as constrained HTML through the selected theme. | Not supported. |
-| `markdown-xhtml-v1` / `body.md` | Rendered as the supported constrained Markdown/XHTML subset. Markdown images embed as local `data:` URLs. | Rendered lossily to Gemtext. Formatting is reduced to readable text, links become separate `=> URL label` lines, tables become preformatted pipe tables, and Markdown images are rejected. |
-| `gemtext-v1` / `body.gmi` | Rendered as constrained XHTML from supported Gemtext line types. | Near-native pass-through with a generated page title heading. |
+| Source file | Source format | HTML/XHTML output | `flat-gemini-v1` output |
+| --- | --- | --- | --- |
+| `.html` | `html` | Rendered as constrained HTML through the selected theme. | Not supported. |
+| `.md` | `markdown-xhtml-v1` | Rendered as the supported constrained Markdown/XHTML subset. Markdown images embed as local `data:` URLs. | Rendered lossily to Gemtext. Formatting is reduced to readable text, links become separate `=> URL label` lines, tables become preformatted pipe tables, and Markdown images are rejected. |
+| `.gmi` | `gemtext-v1` | Rendered as constrained XHTML from supported Gemtext line types. | Near-native pass-through with a generated page title heading. |
 
 Markdown-to-Gemini conversion preserves document shape where Gemtext has a
 matching concept: headings, paragraphs, links, lists, task-list text,
@@ -237,13 +307,12 @@ Set `output_mode` to `flat-gemini-v1` to generate a flat Gemini capsule:
 }
 ```
 
-Capsule output supports pages only. Pages may use `body_format: "gemtext-v1"`
-with `body.gmi` or `body_format: "markdown-xhtml-v1"` with `body.md`. HTML body
-pages and posts are rejected. `smol` writes the page title as the first `#`
-heading, then appends the rendered Gemtext body. The generated capsule writes
-`index.gmi` for the `index` page and `<slug>.gmi` for other pages. Themes,
-templates, CSS, HTML bodies, posts, Markdown images, and signing are not used by
-`flat-gemini-v1`.
+Capsule output supports pages only. Pages may use `.gmi` or `.md` sources.
+`.html` pages and posts are rejected. `smol` writes the page title as the first
+`#` heading, then appends the rendered Gemtext body. The generated capsule
+writes `index.gmi` for the `index` page and `<slug>.gmi` for other pages.
+Themes, templates, CSS, HTML bodies, posts, Markdown images, and signing are not
+used by `flat-gemini-v1`.
 
 ## Checking Output
 

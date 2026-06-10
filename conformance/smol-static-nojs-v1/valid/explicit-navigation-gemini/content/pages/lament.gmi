@@ -1,0 +1,9 @@
+---
+title: Lament
+links:
+  up: essays
+  previous: kore
+  next: parable-of-old-stone
+  related: [index]
+---
+Lament text.

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +11,7 @@ func TestInitCreatesExpectedStructure(t *testing.T) {
 	dir := testSite(t)
 	want := []string{
 		"smol.json",
-		filepath.Join("content", "pages", "index", "page.json"),
-		filepath.Join("content", "pages", "index", "body.html"),
+		filepath.Join("content", "pages", "index.html"),
 		filepath.Join("content", "posts"),
 		filepath.Join("themes", "default", "theme.json"),
 		filepath.Join("themes", "default", "templates", "index.html.tmpl"),
@@ -46,12 +44,9 @@ func TestInitClassicXHTMLCreatesExpectedStructure(t *testing.T) {
 	}
 	want := []string{
 		"smol.json",
-		filepath.Join("content", "pages", "index", "page.json"),
-		filepath.Join("content", "pages", "index", "body.md"),
-		filepath.Join("content", "pages", "about", "page.json"),
-		filepath.Join("content", "pages", "about", "body.md"),
-		filepath.Join("content", "pages", "sample", "page.json"),
-		filepath.Join("content", "pages", "sample", "body.md"),
+		filepath.Join("content", "pages", "index.md"),
+		filepath.Join("content", "pages", "about.md"),
+		filepath.Join("content", "pages", "sample", "index.md"),
 		filepath.Join("content", "pages", "sample", "assets", "sample.png"),
 		filepath.Join("themes", "classic-xhtml", "theme.json"),
 		filepath.Join("themes", "classic-xhtml", "templates", "index.html.tmpl"),
@@ -75,9 +70,9 @@ func TestInitClassicXHTMLCreatesExpectedStructure(t *testing.T) {
 	if !strings.Contains(site, `"output_mode": "flat-xhtml-v1"`) || !strings.Contains(site, `"theme": "classic-xhtml"`) {
 		t.Fatalf("classic smol.json missing flat mode/theme:\n%s", site)
 	}
-	indexMeta := readContentMeta(t, filepath.Join(dir, "content", "pages", "index", "page.json"))
-	if indexMeta.BodyFormat != bodyFormatMarkdownXHTML {
-		t.Fatalf("index body_format = %q", indexMeta.BodyFormat)
+	indexMeta, _ := readContentSource(t, filepath.Join(dir, "content", "pages", "index.md"))
+	if indexMeta.Title != "Home" {
+		t.Fatalf("index title = %q", indexMeta.Title)
 	}
 	css := readText(t, filepath.Join(dir, "themes", "classic-xhtml", "assets", "style.css"))
 	for _, want := range []string{
@@ -96,7 +91,7 @@ func TestInitClassicXHTMLCreatesExpectedStructure(t *testing.T) {
 	if strings.Contains(css, "input[type=checkbox]") || strings.Contains(css, "\nsup {") {
 		t.Fatalf("classic CSS retained footnote controls:\n%s", css)
 	}
-	sampleBody := readText(t, filepath.Join(dir, "content", "pages", "sample", "body.md"))
+	_, sampleBody := readContentSource(t, filepath.Join(dir, "content", "pages", "sample", "index.md"))
 	for _, want := range []string{"Markdown Capability Sample", "![Embedded sample image]", "| Source | HTML output | Gemini output |", "- [x] Static task item", "```text", "<section>"} {
 		if !strings.Contains(sampleBody, want) {
 			t.Fatalf("sample demo missing %q:\n%s", want, sampleBody)
@@ -125,15 +120,14 @@ func TestNewPageCreatesExpectedMetadataAndBody(t *testing.T) {
 	if err := NewContent(dir, "page", "about", "About"); err != nil {
 		t.Fatalf("NewContent page: %v", err)
 	}
-	meta := readContentMeta(t, filepath.Join(dir, "content", "pages", "about", "page.json"))
-	if meta.Kind != "page" || meta.Slug != "about" || meta.Title != "About" {
+	meta, body := readContentSource(t, filepath.Join(dir, "content", "pages", "about.md"))
+	if meta.Title != "About" {
 		t.Fatalf("unexpected metadata: %#v", meta)
 	}
 	if meta.PublishedUTC == "" || meta.UpdatedUTC == "" {
 		t.Fatalf("expected scaffolded timestamps: %#v", meta)
 	}
-	body := readText(t, filepath.Join(dir, "content", "pages", "about", "body.html"))
-	if body != "<p>Write your page here.</p>\n" {
+	if body != "Write your page here.\n" {
 		t.Fatalf("body = %q", body)
 	}
 }
@@ -146,16 +140,15 @@ func TestNewPageInFlatXHTMLCreatesMarkdownBody(t *testing.T) {
 	if err := NewContent(dir, "page", "notes", "Notes"); err != nil {
 		t.Fatalf("NewContent page: %v", err)
 	}
-	meta := readContentMeta(t, filepath.Join(dir, "content", "pages", "notes", "page.json"))
-	if meta.Kind != "page" || meta.Slug != "notes" || meta.BodyFormat != bodyFormatMarkdownXHTML {
+	meta, body := readContentSource(t, filepath.Join(dir, "content", "pages", "notes.md"))
+	if meta.Title != "Notes" {
 		t.Fatalf("unexpected metadata: %#v", meta)
 	}
-	body := readText(t, filepath.Join(dir, "content", "pages", "notes", "body.md"))
 	if body != "Write your page here.\n" {
 		t.Fatalf("body = %q", body)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "content", "pages", "notes", "body.html")); !os.IsNotExist(err) {
-		t.Fatalf("flat-xhtml page should not create body.html: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, "content", "pages", "notes.html")); !os.IsNotExist(err) {
+		t.Fatalf("flat-xhtml page should not create notes.html: %v", err)
 	}
 }
 
@@ -164,16 +157,15 @@ func TestNewPageInFlatGeminiCreatesGemtextBody(t *testing.T) {
 	if err := NewContent(dir, "page", "notes", "Notes"); err != nil {
 		t.Fatalf("NewContent page: %v", err)
 	}
-	meta := readContentMeta(t, filepath.Join(dir, "content", "pages", "notes", "page.json"))
-	if meta.Kind != "page" || meta.Slug != "notes" || meta.BodyFormat != bodyFormatGemtext {
+	meta, body := readContentSource(t, filepath.Join(dir, "content", "pages", "notes.gmi"))
+	if meta.Title != "Notes" {
 		t.Fatalf("unexpected metadata: %#v", meta)
 	}
-	body := readText(t, filepath.Join(dir, "content", "pages", "notes", "body.gmi"))
 	if body != "Write your page here.\n" {
 		t.Fatalf("body = %q", body)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "content", "pages", "notes", "body.html")); !os.IsNotExist(err) {
-		t.Fatalf("flat-gemini page should not create body.html: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, "content", "pages", "notes.html")); !os.IsNotExist(err) {
+		t.Fatalf("flat-gemini page should not create notes.html: %v", err)
 	}
 }
 
@@ -207,12 +199,11 @@ func TestNewPostCreatesExpectedMetadataAndBody(t *testing.T) {
 	if err := NewContent(dir, "post", "hello-world", "Hello World"); err != nil {
 		t.Fatalf("NewContent post: %v", err)
 	}
-	meta := readContentMeta(t, filepath.Join(dir, "content", "posts", "hello-world", "page.json"))
-	if meta.Kind != "post" || meta.Slug != "hello-world" || meta.Title != "Hello World" {
+	meta, body := readContentSource(t, filepath.Join(dir, "content", "posts", "hello-world.md"))
+	if meta.Title != "Hello World" {
 		t.Fatalf("unexpected metadata: %#v", meta)
 	}
-	body := readText(t, filepath.Join(dir, "content", "posts", "hello-world", "body.html"))
-	if body != "<p>Write your page here.</p>\n" {
+	if body != "Write your page here.\n" {
 		t.Fatalf("body = %q", body)
 	}
 }
@@ -226,11 +217,11 @@ func TestInvalidSlugsAreRejected(t *testing.T) {
 	}
 }
 
-func readContentMeta(t *testing.T, path string) ContentMeta {
+func readContentSource(t *testing.T, path string) (ContentMeta, string) {
 	t.Helper()
-	var meta ContentMeta
-	if err := json.Unmarshal([]byte(readText(t, path)), &meta); err != nil {
-		t.Fatalf("Unmarshal(%s): %v", path, err)
+	meta, body, err := parseContentFrontMatter([]byte(readText(t, path)), path)
+	if err != nil {
+		t.Fatalf("parseContentFrontMatter(%s): %v", path, err)
 	}
-	return meta
+	return meta, string(body)
 }

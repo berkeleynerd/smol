@@ -59,21 +59,7 @@ func TestGemtextRejectsMissingLinkURL(t *testing.T) {
 
 func TestGemtextBodyBuildsFromBodyGMI(t *testing.T) {
 	dir := testSite(t)
-	pageDir := filepath.Join(dir, "content", "pages", "capsule")
-	writeText(t, filepath.Join(pageDir, "page.json"), `{
-  "format": "smol-page-v1",
-  "kind": "page",
-  "title": "Capsule",
-  "slug": "capsule",
-  "summary": "",
-  "published_utc": "",
-  "updated_utc": "",
-  "tags": [],
-  "draft": false,
-  "body_format": "gemtext-v1"
-}
-`)
-	writeText(t, filepath.Join(pageDir, "body.gmi"), `# Gemtext Source
+	writeContentSource(t, dir, "page", "capsule", ".gmi", []string{"title: Capsule"}, `# Gemtext Source
 
 => / About
 * item

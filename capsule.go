@@ -75,11 +75,12 @@ func buildGeminiCapsule(siteDir string, siteCfg SiteConfig, opts BuildOptions) e
 }
 
 func renderGeminiPage(page Page) (string, error) {
-	bodyBytes, err := os.ReadFile(page.bodyPath)
-	if err != nil {
-		return "", err
+	bodyBytes := page.body
+	if bodyBytes == nil {
+		return "", fmt.Errorf("content body was not loaded for %s %q", page.Kind, page.Slug)
 	}
 	body := string(bodyBytes)
+	var err error
 	switch page.BodyFormat {
 	case bodyFormatGemtext:
 		if err := ValidateGemtext(body); err != nil {

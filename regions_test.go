@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -78,7 +79,8 @@ func TestStarterAuthoredRegionsAreBodyExact(t *testing.T) {
 	buildSite(t, dir)
 
 	indexHTML := readText(t, filepath.Join(dir, "public", "index.html"))
-	assertExactRegion(t, "default index", indexHTML, readText(t, filepath.Join(dir, "content", "pages", "index", "body.html")))
+	indexSourceBody := manuallyStripFrontMatter(t, filepath.Join(dir, "content", "pages", "index.html"))
+	assertExactRegion(t, "default index", indexHTML, indexSourceBody)
 	assertRegionExcludes(t, "default index", indexHTML, "<h1>", "Posts", generatedNavigationOpen)
 	if !strings.Contains(indexHTML, `<main id="content">`) {
 		t.Fatalf("default index missing semantic main landmark:\n%s", indexHTML)
@@ -88,15 +90,44 @@ func TestStarterAuthoredRegionsAreBodyExact(t *testing.T) {
 	}
 
 	pageHTML := readText(t, filepath.Join(dir, "public", "about", "index.html"))
-	assertExactRegion(t, "default page", pageHTML, readText(t, filepath.Join(dir, "content", "pages", "about", "body.html")))
+	aboutBody, err := RenderMarkdownXHTML(manuallyStripFrontMatter(t, filepath.Join(dir, "content", "pages", "about.md")))
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTML about: %v", err)
+	}
+	assertExactRegion(t, "default page", pageHTML, aboutBody)
 	assertRegionExcludes(t, "default page", pageHTML, "<h1>", generatedNavigationOpen)
 
 	postHTML := readText(t, filepath.Join(dir, "public", "posts", "hello-world", "index.html"))
-	assertExactRegion(t, "default post", postHTML, readText(t, filepath.Join(dir, "content", "posts", "hello-world", "body.html")))
+	postBody, err := RenderMarkdownXHTML(manuallyStripFrontMatter(t, filepath.Join(dir, "content", "posts", "hello-world.md")))
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTML post: %v", err)
+	}
+	assertExactRegion(t, "default post", postHTML, postBody)
 	assertRegionExcludes(t, "default post", postHTML, "<h1>", "<time", generatedNavigationOpen)
 	if !strings.Contains(postHTML, "<main id=\"content\">\n    <article>") {
 		t.Fatalf("default post did not restore main/article semantics:\n%s", postHTML)
 	}
+}
+
+func TestAuthoredRegionUsesIndependentGemtextBody(t *testing.T) {
+	dir := testSite(t)
+	path := writeContentSource(t, dir, "page", "gem", ".gmi", []string{"title: Gem"}, "Gemtext body.\n")
+	buildSite(t, dir)
+	html := readText(t, filepath.Join(dir, "public", "gem", "index.html"))
+	expected, err := RenderGemtextXHTML(manuallyStripFrontMatter(t, path))
+	if err != nil {
+		t.Fatalf("RenderGemtextXHTML: %v", err)
+	}
+	assertExactRegion(t, "gemtext page", html, expected)
+}
+
+func TestAuthoredRegionUsesIndependentBOMAndCRLFBody(t *testing.T) {
+	dir := testSite(t)
+	path := filepath.Join(dir, "content", "pages", "crlf.html")
+	writeText(t, path, "\xef\xbb\xbf--- \t\r\ntitle: CRLF\r\n--- \t\r\n<p>CRLF body.</p>\r\n")
+	buildSite(t, dir)
+	html := readText(t, filepath.Join(dir, "public", "crlf", "index.html"))
+	assertExactRegion(t, "crlf html page", html, manuallyStripFrontMatter(t, path))
 }
 
 func TestIndexAuthoredRegionHashIgnoresGeneratedPostList(t *testing.T) {
@@ -126,17 +157,13 @@ func TestClassicAuthoredRegionIsRenderedBodyOnly(t *testing.T) {
 	if err := InitSiteWithStarter(dir, starterClassicXHTML); err != nil {
 		t.Fatalf("InitSiteWithStarter classic-xhtml: %v", err)
 	}
-	addMainSpacerToPageJSON(t, filepath.Join(dir, "content", "pages", "sample", "page.json"))
+	addFieldsToContentSource(t, filepath.Join(dir, "content", "pages", "sample", "index.md"), []string{"main_spacer: true"})
 	buildSite(t, dir)
 
 	html := readText(t, filepath.Join(dir, "public", "sample.html"))
 	siteCfg, err := LoadSiteConfig(dir)
 	if err != nil {
 		t.Fatalf("LoadSiteConfig: %v", err)
-	}
-	site, err := siteView(siteCfg)
-	if err != nil {
-		t.Fatalf("siteView: %v", err)
 	}
 	pages, _, err := LoadContent(dir, siteCfg)
 	if err != nil {
@@ -152,9 +179,13 @@ func TestClassicAuthoredRegionIsRenderedBodyOnly(t *testing.T) {
 	if sample.Slug == "" {
 		t.Fatalf("sample page not found")
 	}
-	rendered, _, err := renderPageBody(sample, site, siteCfg.Nav)
+	sampleBody := manuallyStripFrontMatter(t, filepath.Join(dir, "content", "pages", "sample", "index.md"))
+	rendered, err := RenderMarkdownXHTMLWithImages(sampleBody, func(path, alt, title string) (string, error) {
+		html, _, err := embedImageWithTitle(sample, path, alt, title)
+		return string(html), err
+	})
 	if err != nil {
-		t.Fatalf("renderPageBody sample: %v", err)
+		t.Fatalf("RenderMarkdownXHTMLWithImages sample: %v", err)
 	}
 	assertExactRegion(t, "classic sample", html, rendered)
 	assertRegionExcludes(t, "classic sample", html, "<p>&nbsp;</p>", generatedNavigationOpen)
@@ -188,8 +219,8 @@ func TestNestedManifestIncludesRegionHashes(t *testing.T) {
 
 func TestNestedManifestIncludesGeneratedNavigationRegionWhenPresent(t *testing.T) {
 	dir := testSite(t)
-	writeHTMLPageWithLinks(t, dir, "about", "About", false, `"links": {"next": "sample"}`)
-	writeHTMLPageWithLinks(t, dir, "sample", "Sample", false, "")
+	writeHTMLPageWithLinks(t, dir, "about", "About", false, []string{"links:", "  next: sample"})
+	writeHTMLPageWithLinks(t, dir, "sample", "Sample", false, nil)
 	buildSite(t, dir)
 	html := readText(t, filepath.Join(dir, "public", "about", "index.html"))
 	m, ok, err := ExtractManifest(html)
@@ -220,7 +251,7 @@ func TestBuildRejectsReservedRegionMarkersInRenderedBody(t *testing.T) {
 	for _, marker := range reservedRegionMarkers() {
 		t.Run(marker, func(t *testing.T) {
 			dir := testSite(t)
-			writeText(t, filepath.Join(dir, "content", "pages", "index", "body.html"), "<p>Before.</p>"+markerTemplateAction(marker)+"<p>After.</p>\n")
+			writeContentSource(t, dir, "page", "index", ".html", []string{"title: Home"}, "<p>Before.</p>"+markerTemplateAction(marker)+"<p>After.</p>\n")
 			err := BuildSite(BuildOptions{SiteDir: dir})
 			if err == nil || !strings.Contains(err.Error(), "rendered body contains reserved region marker") || !strings.Contains(err.Error(), marker) || !strings.Contains(err.Error(), `page "index"`) {
 				t.Fatalf("BuildSite error = %v, want reserved marker failure with page context", err)
@@ -234,12 +265,10 @@ func TestFlatXHTMLBuildRejectsReservedRegionMarkersInRenderedBody(t *testing.T) 
 	if err := InitSiteWithStarter(dir, starterClassicXHTML); err != nil {
 		t.Fatalf("InitSiteWithStarter classic-xhtml: %v", err)
 	}
-	pageJSON := filepath.Join(dir, "content", "pages", "sample", "page.json")
-	meta := readText(t, pageJSON)
-	meta = strings.Replace(meta, `"body_format": "markdown-xhtml-v1"`, `"body_format": "html"`, 1)
-	writeText(t, pageJSON, meta)
-	bodyPath := filepath.Join(dir, "content", "pages", "sample", "body.html")
-	writeText(t, bodyPath, "<p>Before.</p>{{.Smol.GeneratedNavigationOpen}}<p>After.</p>\n")
+	if err := os.Remove(filepath.Join(dir, "content", "pages", "sample", "index.md")); err != nil {
+		t.Fatalf("remove sample markdown: %v", err)
+	}
+	writeContentBundleSource(t, dir, "page", "sample", ".html", []string{"title: Sample Page"}, "<p>Before.</p>{{.Smol.GeneratedNavigationOpen}}<p>After.</p>\n")
 	err := BuildSite(BuildOptions{SiteDir: dir})
 	if err == nil || !strings.Contains(err.Error(), "rendered body contains reserved region marker") || !strings.Contains(err.Error(), generatedNavigationOpen) || !strings.Contains(err.Error(), `page "sample"`) {
 		t.Fatalf("BuildSite flat XHTML error = %v, want reserved marker failure with page context", err)
@@ -303,6 +332,46 @@ func assertExactRegion(t *testing.T, label, html, want string) {
 	}
 }
 
+func manuallyStripFrontMatter(t *testing.T, path string) string {
+	t.Helper()
+	text := readText(t, path)
+	text = strings.TrimPrefix(text, "\xef\xbb\xbf")
+	line, pos, ok := manualFrontMatterLine(text, 0)
+	if !ok || strings.TrimRight(line, " \t") != "---" {
+		t.Fatalf("%s did not start with front matter", path)
+	}
+	for pos <= len(text) {
+		line, next, ok := manualFrontMatterLine(text, pos)
+		if !ok {
+			t.Fatalf("%s did not contain closing front matter marker", path)
+		}
+		if strings.TrimRight(line, " \t") == "---" {
+			return text[next:]
+		}
+		pos = next
+	}
+	t.Fatalf("%s did not contain closing front matter marker", path)
+	return ""
+}
+
+func manualFrontMatterLine(text string, pos int) (string, int, bool) {
+	if pos > len(text) {
+		return "", pos, false
+	}
+	if pos == len(text) {
+		return "", pos, false
+	}
+	if next := strings.IndexByte(text[pos:], '\n'); next >= 0 {
+		end := pos + next
+		line := text[pos:end]
+		if strings.HasSuffix(line, "\r") {
+			line = strings.TrimSuffix(line, "\r")
+		}
+		return line, end + 1, true
+	}
+	return text[pos:], len(text), true
+}
+
 func assertRegionExcludes(t *testing.T, label, html string, values ...string) {
 	t.Helper()
 	region := regionInner(t, html, authoredContentOpen, authoredContentClose)
@@ -344,16 +413,6 @@ func regionHashesErr(html string) error {
 func sha256Hex(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
-}
-
-func addMainSpacerToPageJSON(t *testing.T, path string) {
-	t.Helper()
-	text := readText(t, path)
-	marker := "\n}"
-	if !strings.Contains(text, marker) {
-		t.Fatalf("page JSON missing closing marker:\n%s", text)
-	}
-	writeText(t, path, strings.Replace(text, marker, ",\n  \"main_spacer\": true\n}", 1))
 }
 
 func markerTemplateAction(marker string) string {

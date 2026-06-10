@@ -289,9 +289,9 @@ func pathWithinOrSame(parent, child string) bool {
 }
 
 func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []ManifestResource, error) {
-	body, err := os.ReadFile(page.bodyPath)
-	if err != nil {
-		return "", nil, err
+	body := page.body
+	if body == nil {
+		return "", nil, fmt.Errorf("content body was not loaded for %s %q", page.Kind, page.Slug)
 	}
 	if page.BodyFormat == bodyFormatMarkdownXHTML {
 		var resources []ManifestResource
@@ -358,6 +358,9 @@ func embedImage(page Page, path, alt string) (template.HTML, ManifestResource, e
 func embedImageWithTitle(page Page, path, alt, title string) (template.HTML, ManifestResource, error) {
 	if alt == "" {
 		return "", ManifestResource{}, fmt.Errorf("image alt text is required")
+	}
+	if page.contentDir == "" {
+		return "", ManifestResource{}, fmt.Errorf("local images require bundle form")
 	}
 	if filepath.IsAbs(path) || strings.Contains(path, "..") {
 		return "", ManifestResource{}, fmt.Errorf("image path escapes content directory: %s", path)

@@ -1,0 +1,4 @@
+---
+title: Kore
+---
+Kore text.

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,7 +57,7 @@ func initDefaultSite(dir string) error {
 		return err
 	}
 	dirs := []string{
-		filepath.Join(dir, "content", "pages", "index"),
+		filepath.Join(dir, "content", "pages"),
 		filepath.Join(dir, "content", "posts"),
 		filepath.Join(dir, "themes", "default", "templates"),
 		filepath.Join(dir, "themes", "default", "partials"),
@@ -73,19 +72,11 @@ func initDefaultSite(dir string) error {
 
 	files := map[string]string{
 		"smol.json": siteConfigJSON(),
-		filepath.Join("content", "pages", "index", "page.json"): contentJSON(ContentMeta{
-			Format:       "smol-page-v1",
-			Kind:         "page",
-			Title:        "Home",
-			Slug:         "index",
-			Summary:      "",
-			PublishedUTC: "2026-06-07T00:00:00Z",
-			UpdatedUTC:   "2026-06-07T00:00:00Z",
-			Tags:         []string{},
-			Draft:        false,
-		}),
-		filepath.Join("content", "pages", "index", "body.html"): `<p>Write your page here.</p>
-`,
+		filepath.Join("content", "pages", "index.html"): contentSource([]string{
+			"title: Home",
+			"published_utc: 2026-06-07T00:00:00Z",
+			"updated_utc: 2026-06-07T00:00:00Z",
+		}, "<p>Write your page here.</p>\n"),
 		filepath.Join("themes", "default", "theme.json"):                   defaultThemeJSON(),
 		filepath.Join("themes", "default", "templates", "index.html.tmpl"): defaultIndexTemplate(),
 		filepath.Join("themes", "default", "templates", "page.html.tmpl"):  defaultPageTemplate(),
@@ -115,8 +106,7 @@ func initClassicXHTMLSite(dir string) error {
 		return err
 	}
 	dirs := []string{
-		filepath.Join(dir, "content", "pages", "index"),
-		filepath.Join(dir, "content", "pages", "about"),
+		filepath.Join(dir, "content", "pages"),
 		filepath.Join(dir, "content", "pages", "sample", "assets"),
 		filepath.Join(dir, "themes", "classic-xhtml", "templates"),
 		filepath.Join(dir, "themes", "classic-xhtml", "assets"),
@@ -130,12 +120,9 @@ func initClassicXHTMLSite(dir string) error {
 
 	files := map[string]string{
 		"smol.json": classicXHTMLSiteConfigJSON(),
-		filepath.Join("content", "pages", "index", "page.json"):                  classicPageJSON("Home", "index", "A small flat XHTML site."),
-		filepath.Join("content", "pages", "index", "body.md"):                    classicIndexMarkdown(),
-		filepath.Join("content", "pages", "about", "page.json"):                  classicPageJSON("About", "about", "About this starter."),
-		filepath.Join("content", "pages", "about", "body.md"):                    classicAboutMarkdown(),
-		filepath.Join("content", "pages", "sample", "page.json"):                 classicPageJSON("Sample Page", "sample", "A sample Markdown/XHTML page."),
-		filepath.Join("content", "pages", "sample", "body.md"):                   classicSampleMarkdown(),
+		filepath.Join("content", "pages", "index.md"):                            classicPageSource("Home", "A small flat XHTML site.", classicIndexMarkdown()),
+		filepath.Join("content", "pages", "about.md"):                            classicPageSource("About", "About this starter.", classicAboutMarkdown()),
+		filepath.Join("content", "pages", "sample", "index.md"):                  classicPageSource("Sample Page", "A sample Markdown/XHTML page.", classicSampleMarkdown()),
 		filepath.Join("content", "pages", "sample", "assets", "sample.png"):      classicSamplePNG(),
 		filepath.Join("themes", "classic-xhtml", "theme.json"):                   classicXHTMLThemeJSON(),
 		filepath.Join("themes", "classic-xhtml", "templates", "index.html.tmpl"): classicXHTMLPageTemplate(),
@@ -171,43 +158,28 @@ func NewContent(siteDir, kind, slug, title string) error {
 	if kind == "post" {
 		base = "posts"
 	}
-	dir := filepath.Join(siteDir, "content", base, slug)
-	if _, err := os.Stat(dir); err == nil {
+	ext := ".md"
+	bodyContent := "Write your page here.\n"
+	if site.OutputMode == outputModeFlatGemini {
+		ext = ".gmi"
+	}
+	path := filepath.Join(siteDir, "content", base, slug+ext)
+	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("%s already exists: %s", kind, slug)
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if _, err := os.Stat(filepath.Join(siteDir, "content", base, slug)); err == nil {
+		return fmt.Errorf("%s already exists: %s", kind, slug)
+	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	now := time.Now().UTC().Truncate(time.Second).Format(time.RFC3339)
-	meta := ContentMeta{
-		Format:       "smol-page-v1",
-		Kind:         kind,
-		Title:        title,
-		Slug:         slug,
-		Summary:      "",
-		PublishedUTC: now,
-		UpdatedUTC:   now,
-		Tags:         []string{},
-		Draft:        false,
-	}
-	bodyName := "body.html"
-	bodyContent := `<p>Write your page here.</p>
-`
-	if site.OutputMode == outputModeFlatXHTML {
-		meta.BodyFormat = bodyFormatMarkdownXHTML
-		bodyName = "body.md"
-		bodyContent = "Write your page here.\n"
-	} else if site.OutputMode == outputModeFlatGemini {
-		meta.BodyFormat = bodyFormatGemtext
-		bodyName = "body.gmi"
-		bodyContent = "Write your page here.\n"
-	}
-	if err := writeFileExclusive(filepath.Join(dir, "page.json"), []byte(contentJSON(meta)), 0o644); err != nil {
-		return err
-	}
-	return writeFileExclusive(filepath.Join(dir, bodyName), []byte(bodyContent), 0o644)
+	return writeFileExclusive(path, []byte(contentSource([]string{
+		"title: " + quoteFrontMatterString(title),
+		"published_utc: " + now,
+		"updated_utc: " + now,
+	}, bodyContent)), 0o644)
 }
 
 func writeFileExclusive(path string, data []byte, perm os.FileMode) error {
@@ -223,9 +195,13 @@ func writeFileExclusive(path string, data []byte, perm os.FileMode) error {
 	return err
 }
 
-func contentJSON(meta ContentMeta) string {
-	data, _ := json.MarshalIndent(meta, "", "  ")
-	return string(data) + "\n"
+func contentSource(fields []string, body string) string {
+	return "---\n" + strings.Join(fields, "\n") + "\n---\n" + body
+}
+
+func quoteFrontMatterString(value string) string {
+	quoted := fmt.Sprintf("%q", value)
+	return quoted
 }
 
 func siteConfigJSON() string {
@@ -442,19 +418,12 @@ func classicXHTMLSiteConfigJSON() string {
 `
 }
 
-func classicPageJSON(title, slug, summary string) string {
-	return contentJSON(ContentMeta{
-		Format:       "smol-page-v1",
-		Kind:         "page",
-		Title:        title,
-		Slug:         slug,
-		Summary:      summary,
-		PublishedUTC: "",
-		UpdatedUTC:   "",
-		Tags:         []string{},
-		Draft:        false,
-		BodyFormat:   bodyFormatMarkdownXHTML,
-	})
+func classicPageSource(title, summary, body string) string {
+	fields := []string{"title: " + quoteFrontMatterString(title)}
+	if summary != "" {
+		fields = append(fields, "summary: "+quoteFrontMatterString(summary))
+	}
+	return contentSource(fields, body)
 }
 
 func classicXHTMLThemeJSON() string {

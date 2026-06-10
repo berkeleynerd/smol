@@ -100,40 +100,40 @@ func TestLinklessStarterNavigationWhitespaceIsStable(t *testing.T) {
 func TestPageNavigationValidationErrors(t *testing.T) {
 	tests := map[string]struct {
 		setup func(string)
-		links string
+		links []string
 		want  string
 	}{
 		"unknown target": {
-			links: `"links": {"next": "missing"}`,
+			links: []string{"links:", "  next: missing"},
 			want:  `unknown target slug: missing`,
 		},
 		"external target": {
-			links: `"links": {"next": "https://example.org"}`,
+			links: []string{"links:", "  next: https://example.org"},
 			want:  `links.next must be a page slug`,
 		},
 		"post slug target": {
 			setup: func(dir string) {
 				writePost(t, dir, "hello-world", "Hello World", "", false)
 			},
-			links: `"links": {"next": "hello-world"}`,
+			links: []string{"links:", "  next: hello-world"},
 			want:  `unknown target slug: hello-world`,
 		},
 		"draft target": {
 			setup: func(dir string) {
-				writeHTMLPageWithLinks(t, dir, "draft-page", "Draft Page", true, "")
+				writeHTMLPageWithLinks(t, dir, "draft-page", "Draft Page", true, nil)
 			},
-			links: `"links": {"next": "draft-page"}`,
+			links: []string{"links:", "  next: draft-page"},
 			want:  `targets draft page: draft-page`,
 		},
 		"self target": {
-			links: `"links": {"next": "index"}`,
+			links: []string{"links:", "  next: index"},
 			want:  `links.next cannot target itself`,
 		},
 		"duplicate related target": {
 			setup: func(dir string) {
-				writeHTMLPageWithLinks(t, dir, "about", "About", false, "")
+				writeHTMLPageWithLinks(t, dir, "about", "About", false, nil)
 			},
-			links: `"links": {"related": ["about", "about"]}`,
+			links: []string{"links:", "  related: [about, about]"},
 			want:  `duplicate related link target: about`,
 		},
 	}
@@ -154,9 +154,9 @@ func TestPageNavigationValidationErrors(t *testing.T) {
 
 func TestExplicitPageNavigationRendersOutsideAuthoredContent(t *testing.T) {
 	dir := testSite(t)
-	writeHTMLPageWithLinks(t, dir, "about", "About", false, `"links": {"up": "index", "next": "sample", "related": ["reference"]}`)
-	writeHTMLPageWithLinks(t, dir, "sample", "Sample", false, "")
-	writeHTMLPageWithLinks(t, dir, "reference", "Reference", false, "")
+	writeHTMLPageWithLinks(t, dir, "about", "About", false, []string{"links:", "  up: index", "  next: sample", "  related: [reference]"})
+	writeHTMLPageWithLinks(t, dir, "sample", "Sample", false, nil)
+	writeHTMLPageWithLinks(t, dir, "reference", "Reference", false, nil)
 	buildSite(t, dir)
 
 	html := readText(t, filepath.Join(dir, "public", "about", "index.html"))
@@ -190,7 +190,7 @@ func TestExplicitPageNavigationRendersFlatXHTMLHrefs(t *testing.T) {
 	if err := InitSiteWithStarter(dir, starterClassicXHTML); err != nil {
 		t.Fatalf("InitSiteWithStarter classic-xhtml: %v", err)
 	}
-	addLinksToPageJSON(t, filepath.Join(dir, "content", "pages", "sample", "page.json"), `"links": {"up": "about", "previous": "index", "related": ["about"]}`)
+	addFieldsToContentSource(t, filepath.Join(dir, "content", "pages", "sample", "index.md"), []string{"links:", "  up: about", "  previous: index", "  related: [about]"})
 	buildSite(t, dir)
 
 	html := readText(t, filepath.Join(dir, "public", "sample.html"))
@@ -211,38 +211,27 @@ func TestExplicitPageNavigationRendersFlatXHTMLHrefs(t *testing.T) {
 	}
 }
 
-func writeHTMLPageWithLinks(t *testing.T, dir, slug, title string, draft bool, links string) {
+func writeHTMLPageWithLinks(t *testing.T, dir, slug, title string, draft bool, links []string) {
 	t.Helper()
-	draftValue := "false"
+	fields := []string{"title: " + quoteFrontMatterString(title)}
 	if draft {
-		draftValue = "true"
+		fields = append(fields, "draft: true")
 	}
-	linkBlock := ""
-	if links != "" {
-		linkBlock = ",\n  " + links
-	}
-	pageDir := filepath.Join(dir, "content", "pages", slug)
-	writeText(t, filepath.Join(pageDir, "page.json"), `{
-  "format": "smol-page-v1",
-  "kind": "page",
-  "title": "`+title+`",
-  "slug": "`+slug+`",
-  "summary": "",
-  "published_utc": "",
-  "updated_utc": "",
-  "tags": [],
-  "draft": `+draftValue+linkBlock+`
-}
-`)
-	writeText(t, filepath.Join(pageDir, "body.html"), "<p>Page.</p>\n")
+	fields = append(fields, links...)
+	writeContentSource(t, dir, "page", slug, ".html", fields, "<p>Page.</p>\n")
 }
 
-func addLinksToPageJSON(t *testing.T, path, links string) {
+func addFieldsToContentSource(t *testing.T, path string, fields []string) {
 	t.Helper()
 	text := readText(t, path)
-	marker := "\n}\n"
-	if !strings.HasSuffix(text, marker) {
-		t.Fatalf("%s did not end with page.json object marker", path)
+	marker := "---\n"
+	if !strings.HasPrefix(text, marker) {
+		t.Fatalf("%s did not start with front matter", path)
 	}
-	writeText(t, path, strings.TrimSuffix(text, marker)+",\n  "+links+marker)
+	afterOpen := strings.Index(text[len(marker):], marker)
+	if afterOpen < 0 {
+		t.Fatalf("%s did not contain closing front matter marker", path)
+	}
+	insertAt := len(marker) + afterOpen
+	writeText(t, path, text[:insertAt]+strings.Join(fields, "\n")+"\n"+text[insertAt:])
 }

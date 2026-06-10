@@ -61,10 +61,12 @@ When no page navigation is generated, the starter themes do not add this anchor.
 
 ### Authored Content
 
-Authored content is exactly the HTML byte string derived from the page body
-source: `body.html`, `body.md`, or `body.gmi` rendered to HTML. Page titles,
-post dates, generated post lists, navigation, and theme shell are not part of
-the authored-content region.
+Authored content is exactly the HTML byte string derived from the page or post
+source body after front matter has been stripped. `.html` source bodies are used
+as constrained HTML fragments, `.md` source bodies render through
+`markdown-xhtml-v1`, and `.gmi` source bodies render through `gemtext-v1` for
+HTML output. Page titles, post dates, generated post lists, navigation, and
+theme shell are not part of the authored-content region.
 
 In shipped starter themes, authored content is inside the exact comment marker
 pair:
@@ -81,8 +83,8 @@ v1 authored-content boundary.
 
 ### Generated Navigation
 
-Generated navigation is navigation synthesized from `page.json` `links`, page
-titles, and output routing.
+Generated navigation is navigation synthesized from source front-matter `links`,
+page titles, and output routing.
 
 In HTML starter output, generated navigation is rendered as a normal navigation
 landmark:
@@ -99,7 +101,7 @@ region can include synthesized links in addition to author-declared targets:
 
 - `Top`, an HTML-only `#top` link;
 - `Home`, when an `index` page exists and the source page is not `index`;
-- `Up`, `Previous`, `Next`, and `Related` links from `page.json`.
+- `Up`, `Previous`, `Next`, and `Related` links from front matter.
 
 Generated navigation is not a separately signed region.
 
