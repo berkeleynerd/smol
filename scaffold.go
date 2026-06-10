@@ -322,19 +322,20 @@ func defaultPageTemplate() string {
     </nav>
   </header>
 
-  <main{{if .PageNav.HasLinks}} id="content" data-smol-authored-content="true"{{end}}>
+  <main id="content">
     <h1>{{.Page.Title}}</h1>
-    {{.Page.ContentHTML}}
+    {{.Smol.AuthoredContentOpen}}{{.Page.ContentHTML}}{{.Smol.AuthoredContentClose}}
   </main>
 {{if .PageNav.HasLinks}}{{with .PageNav}}
-  <nav data-smol-generated-chrome="navigation" aria-label="Page navigation">
-    <a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
+  <nav aria-label="Page navigation">
+    {{$.Smol.GeneratedNavigationOpen}}<a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
 {{with .Home}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Up}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Previous}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Next}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{range .Related}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
-{{end}}  </nav>
+{{end}}{{$.Smol.GeneratedNavigationClose}}
+  </nav>
 {{end}}{{end}}
   {{template "footer" .}}
 </body>
@@ -358,24 +359,23 @@ func defaultPostTemplate() string {
     </nav>
   </header>
 
-  <main{{if .PageNav.HasLinks}} id="content" data-smol-authored-content="true"{{end}}>
+  <main id="content">
     <article>
       <h1>{{.Page.Title}}</h1>
-      {{if .Page.PublishedUTC}}
-        <p><time datetime="{{.Page.PublishedUTC}}">{{date .Page.PublishedUTC "2006-01-02"}}</time></p>
-      {{end}}
-      {{.Page.ContentHTML}}
+{{if .Page.PublishedUTC}}      <p><time datetime="{{.Page.PublishedUTC}}">{{date .Page.PublishedUTC "2006-01-02"}}</time></p>
+{{end}}      {{.Smol.AuthoredContentOpen}}{{.Page.ContentHTML}}{{.Smol.AuthoredContentClose}}
     </article>
   </main>
 {{if .PageNav.HasLinks}}{{with .PageNav}}
-  <nav data-smol-generated-chrome="navigation" aria-label="Page navigation">
-    <a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
+  <nav aria-label="Page navigation">
+    {{$.Smol.GeneratedNavigationOpen}}<a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
 {{with .Home}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Up}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Previous}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Next}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{range .Related}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
-{{end}}  </nav>
+{{end}}{{$.Smol.GeneratedNavigationClose}}
+  </nav>
 {{end}}{{end}}
   {{template "footer" .}}
 </body>
@@ -399,27 +399,26 @@ func defaultIndexTemplate() string {
     </nav>
   </header>
 
-  <main{{if .PageNav.HasLinks}} id="content" data-smol-authored-content="true"{{end}}>
+  <main id="content">
     <h1>{{.Site.Title}}</h1>
-    {{.Page.ContentHTML}}
-    {{if .Posts}}
-      <h2>Posts</h2>
-      <ul>
-        {{range .Posts}}
-          <li><a href="{{.URL}}">{{.Title}}</a>{{if .PublishedUTC}} <time datetime="{{.PublishedUTC}}">{{date .PublishedUTC "2006-01-02"}}</time>{{end}}</li>
-        {{end}}
-      </ul>
-    {{end}}
-  </main>
+    {{.Smol.AuthoredContentOpen}}{{.Page.ContentHTML}}{{.Smol.AuthoredContentClose}}
+{{if .Posts}}    <section aria-label="Posts">
+    <h2>Posts</h2>
+    <ul>
+{{range .Posts}}      <li><a href="{{.URL}}">{{.Title}}</a>{{if .PublishedUTC}} <time datetime="{{.PublishedUTC}}">{{date .PublishedUTC "2006-01-02"}}</time>{{end}}</li>
+{{end}}    </ul>
+  </section>
+{{end}}  </main>
 {{if .PageNav.HasLinks}}{{with .PageNav}}
-  <nav data-smol-generated-chrome="navigation" aria-label="Page navigation">
-    <a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
+  <nav aria-label="Page navigation">
+    {{$.Smol.GeneratedNavigationOpen}}<a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
 {{with .Home}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Up}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Previous}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Next}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{range .Related}}    <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
-{{end}}  </nav>
+{{end}}{{$.Smol.GeneratedNavigationClose}}
+  </nav>
 {{end}}{{end}}
   {{template "footer" .}}
 </body>
@@ -506,18 +505,17 @@ func classicXHTMLPageTemplate() string {
 {{end}}    </div>
   </div>
 {{end}}</header>
-<main{{if .PageNav.HasLinks}} id="content" data-smol-authored-content="true"{{end}}>
-{{if .Page.MainSpacer}}  <p>&nbsp;</p>
-{{end}}{{indent .Page.ContentHTML "  "}}
-</main>
-{{if .PageNav.HasLinks}}{{with .PageNav}}<nav data-smol-generated-chrome="navigation" aria-label="Page navigation">
-  <a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
+{{if .Page.MainSpacer}}<p>&nbsp;</p>
+{{end}}<main id="content">{{.Smol.AuthoredContentOpen}}{{.Page.ContentHTML}}{{.Smol.AuthoredContentClose}}</main>
+{{if .PageNav.HasLinks}}{{with .PageNav}}<nav aria-label="Page navigation">
+  {{$.Smol.GeneratedNavigationOpen}}<a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
 {{with .Home}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Up}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Previous}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{with .Next}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
 {{end}}{{range .Related}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
-{{end}}</nav>
+{{end}}{{$.Smol.GeneratedNavigationClose}}
+</nav>
 {{end}}{{end -}}
 </body>
 </html>`

@@ -11,8 +11,10 @@
         "file": "public/about/index.html",
         "contains": [
           "<body id=\"top\">",
-          "<main id=\"content\" data-smol-authored-content=\"true\">",
-          "<nav data-smol-generated-chrome=\"navigation\" aria-label=\"Page navigation\">",
+          "<main id=\"content\">",
+          "<!--smol:authored-content-->",
+          "<nav aria-label=\"Page navigation\">",
+          "<!--smol:generated-navigation-->",
           "<a href=\"#top\" rel=\"top\">Top</a>",
           "<a href=\"../index.html\" rel=\"home\">Home</a>",
           "<a href=\"../index.html\" rel=\"up\">Up: Home</a>",
@@ -20,16 +22,34 @@
           "<a href=\"../reference/\" rel=\"related\">Related: Reference</a>"
         ],
         "region": {
-          "start": "<main id=\"content\" data-smol-authored-content=\"true\">",
-          "end": "\n  </main>",
+          "start": "<!--smol:authored-content-->",
+          "end": "<!--/smol:authored-content-->",
           "contains": [
             "<p>About body.</p>"
           ],
           "not_contains": [
-            "data-smol-generated-chrome",
+            "<!--smol:generated-navigation-->",
             "Next: Sample"
           ]
         }
+      }
+    ]
+  },
+  {
+    "name": "region-provenance-default-html",
+    "output_mode": "",
+    "action": "check",
+    "expect": "pass",
+    "starter": "default",
+    "fixture": "valid/region-provenance-default-html",
+    "assertions": [
+      {
+        "file": "public/index.html",
+        "contains": [
+          "<main id=\"content\">",
+          "<!--smol:authored-content-->",
+          "SMOL ATTESTED MANIFEST V1"
+        ]
       }
     ]
   },
@@ -45,8 +65,10 @@
         "file": "public/sample.html",
         "contains": [
           "<body id=\"top\">",
-          "<main id=\"content\" data-smol-authored-content=\"true\">",
-          "<nav data-smol-generated-chrome=\"navigation\" aria-label=\"Page navigation\">",
+          "<main id=\"content\">",
+          "<!--smol:authored-content-->",
+          "<nav aria-label=\"Page navigation\">",
+          "<!--smol:generated-navigation-->",
           "<a href=\"#top\" rel=\"top\">Top</a>",
           "<a href=\"index.html\" rel=\"home\">Home</a>",
           "<a href=\"about.html\" rel=\"up\">Up: About</a>",
@@ -277,6 +299,20 @@
     "fixture": "invalid/check-crlf-wrong-manifest-profile",
     "check_path": "checked/bad.html",
     "error_substring": "profile must be smol/static-nojs-v1"
+  },
+  {
+    "name": "tampered-region",
+    "output_mode": "",
+    "action": "check",
+    "expect": "fail",
+    "starter": "default",
+    "fixture": "invalid/tampered-region",
+    "tamper": {
+      "file": "public/index.html",
+      "old": "Region body.",
+      "new": "Region cody."
+    },
+    "error_substring": "region \"authored-content\" hash mismatch"
   },
   {
     "name": "check-bad-gemtext",

@@ -142,6 +142,22 @@ func TestCheckHTMLValidatesManifestWhenPresent(t *testing.T) {
 			html: "<p>ok</p>" + manifestFixtureWithPolicy(t, false, `"smol-attested-manifest-v1"`, `"`+Profile+`"`, false, false, false),
 			want: "policy.self_contained",
 		},
+		"duplicate region": {
+			html: authoredContentOpen + "Ok." + authoredContentClose + manifestFixtureWithRegions(t, `[{"name":"authored-content","sha256":"`+strings.Repeat("a", 64)+`"},{"name":"authored-content","sha256":"`+strings.Repeat("b", 64)+`"}]`),
+			want: "duplicate region",
+		},
+		"duplicate unknown region": {
+			html: `<p>ok</p>` + manifestFixtureWithRegions(t, `[{"name":"future-region","sha256":"`+strings.Repeat("a", 64)+`"},{"name":"future-region","sha256":"`+strings.Repeat("b", 64)+`"}]`),
+			want: "duplicate region",
+		},
+		"malformed region hash": {
+			html: authoredContentOpen + "Ok." + authoredContentClose + manifestFixtureWithRegions(t, `[{"name":"authored-content","sha256":"`+strings.Repeat("A", 64)+`"}]`),
+			want: "lowercase hex SHA-256",
+		},
+		"malformed resource hash": {
+			html: "<p>ok</p>" + manifestFixtureWithResources(t, `[{"kind":"inline-style","source":"theme:assets/style.css","embedded_as":"style","sha256":"`+strings.Repeat("A", 64)+`"}]`),
+			want: "resources[0].sha256 must be lowercase hex SHA-256",
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -150,6 +166,97 @@ func TestCheckHTMLValidatesManifestWhenPresent(t *testing.T) {
 				t.Fatalf("CheckHTML error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestCheckHTMLVerifiesManifestRegionHashes(t *testing.T) {
+	html := authoredContentOpen + "Alpha." + authoredContentClose
+	hashes, err := regionHashes(html)
+	if err != nil {
+		t.Fatalf("regionHashes: %v", err)
+	}
+	comment := manifestFixtureWithRegions(t, `[{"name":"authored-content","sha256":"`+hashes[regionAuthoredContent]+`"}]`)
+	if err := CheckHTML(html+comment, checkModeDefault); err != nil {
+		t.Fatalf("CheckHTML valid region hash: %v", err)
+	}
+	if err := CheckHTML("<p>ok</p>"+manifestFixtureWithRegions(t, `[{"name":"future-region","sha256":"`+strings.Repeat("a", 64)+`"}]`), checkModeDefault); err != nil {
+		t.Fatalf("CheckHTML should accept unknown future region without known markers: %v", err)
+	}
+	if err := CheckHTML("<p>ok</p>"+manifestFixtureWithRegions(t, `[{"name":"future-region","sha256":"future-digest"}]`), checkModeDefault); err != nil {
+		t.Fatalf("CheckHTML should accept non-hex unknown future region digest: %v", err)
+	}
+	noRegions := html + manifestFixture(t, `"smol-attested-manifest-v1"`, `"`+Profile+`"`)
+	if err := CheckHTML(noRegions, checkModeDefault); err != nil {
+		t.Fatalf("CheckHTML should ignore undeclared marker-looking comments: %v", err)
+	}
+	unknownOnly := html + manifestFixtureWithRegions(t, `[{"name":"future-region","sha256":"`+strings.Repeat("a", 64)+`"}]`)
+	if err := CheckHTML(unknownOnly, checkModeDefault); err != nil {
+		t.Fatalf("CheckHTML should ignore undeclared known marker when only unknown region is declared: %v", err)
+	}
+	tampered := strings.Replace(html, "Alpha", "Alphi", 1) + comment
+	if err := CheckHTML(tampered, checkModeDefault); err == nil || !strings.Contains(err.Error(), `region "authored-content" hash mismatch`) || !strings.Contains(err.Error(), "line-ending-sensitive") {
+		t.Fatalf("CheckHTML tampered region error = %v, want byte-exact hash mismatch", err)
+	}
+	missingMarker := strings.Replace(html, authoredContentOpen, `<!--not-smol:authored-content-->`, 1) + comment
+	if err := CheckHTML(missingMarker, checkModeDefault); err == nil || !strings.Contains(err.Error(), `declared in manifest but not found`) {
+		t.Fatalf("CheckHTML missing marked region error = %v, want missing region", err)
+	}
+	emptyRegions := html + manifestFixtureWithRegions(t, `[]`)
+	if err := CheckHTML(emptyRegions, checkModeDefault); err != nil {
+		t.Fatalf("CheckHTML should ignore marker when regions is empty: %v", err)
+	}
+}
+
+func TestCheckHTMLDeclaredRegionRequiresCleanMarkerPair(t *testing.T) {
+	validHash := sha256Hex("Alpha.")
+	tests := map[string]struct {
+		html string
+		want string
+	}{
+		"missing open": {
+			html: "Alpha." + manifestFixtureWithRegions(t, `[{"name":"authored-content","sha256":"`+validHash+`"}]`),
+			want: `declared in manifest but not found`,
+		},
+		"duplicate open": {
+			html: authoredContentOpen + "Alpha." + authoredContentClose + authoredContentOpen + "Beta." + authoredContentClose + manifestFixtureWithRegions(t, `[{"name":"authored-content","sha256":"`+validHash+`"}]`),
+			want: `open marker appears 2 times`,
+		},
+		"missing close": {
+			html: authoredContentOpen + "Alpha." + manifestFixtureWithRegions(t, `[{"name":"authored-content","sha256":"`+validHash+`"}]`),
+			want: `missing exact close marker`,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := CheckHTML(tc.html, checkModeDefault)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("CheckHTML error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckHTMLAllowsAttestTrailer(t *testing.T) {
+	html := authoredContentOpen + "Alpha." + authoredContentClose
+	hashes, err := regionHashes(html)
+	if err != nil {
+		t.Fatalf("regionHashes: %v", err)
+	}
+	comment := manifestFixtureWithRegions(t, `[{"name":"authored-content","sha256":"`+hashes[regionAuthoredContent]+`"}]`)
+	trailer := "\n<!--ATTESTEDHTML EVIDENCE V1\nplaceholder\nATTESTEDHTML EVIDENCE END-->"
+	if err := CheckHTML(html+comment+trailer, checkModeDefault); err != nil {
+		t.Fatalf("CheckHTML rejected attest trailer: %v", err)
+	}
+}
+
+func TestCheckHTMLRegionHashesAreLineEndingSensitive(t *testing.T) {
+	dir := testSite(t)
+	buildSite(t, dir)
+	html := readText(t, dir+"/public/index.html")
+	crlf := strings.ReplaceAll(html, "\n", "\r\n")
+	err := CheckHTML(crlf, checkModeDefault)
+	if err == nil || !strings.Contains(err.Error(), "hash mismatch") || !strings.Contains(err.Error(), "line-ending-sensitive") {
+		t.Fatalf("CheckHTML CRLF-converted page error = %v, want line-ending-sensitive hash mismatch", err)
 	}
 }
 
@@ -163,7 +270,7 @@ func TestManifestCommentNilResourcesEmitsEmptyArray(t *testing.T) {
 		Kind:         "page",
 		Title:        "Page",
 		CanonicalURL: "https://example.org/page",
-	}, nil)
+	}, nil, nil)
 	if err != nil {
 		t.Fatalf("ManifestComment nil resources: %v", err)
 	}
@@ -242,12 +349,30 @@ func manifestFixture(t *testing.T, format, profile string) string {
 }
 
 func manifestFixtureWithPolicy(t *testing.T, extra bool, format, profile string, javascript, externalResources, selfContained bool) string {
+	return manifestFixtureWithPolicyAndRegions(t, extra, format, profile, javascript, externalResources, selfContained, "")
+}
+
+func manifestFixtureWithRegions(t *testing.T, regions string) string {
+	return manifestFixtureWithPolicyAndRegions(t, false, `"smol-attested-manifest-v1"`, `"`+Profile+`"`, false, false, true, regions)
+}
+
+func manifestFixtureWithResources(t *testing.T, resources string) string {
+	t.Helper()
+	json := `{"format":"smol-attested-manifest-v1","profile":"` + Profile + `","generator":{"name":"tool","version":"0"},"publisher":{"name":"Publisher","origin":"https://example.org","url":"https://example.org"},"page":{"kind":"page","title":"Page","canonical_url":"https://example.org/page","published_utc":"","updated_utc":""},"policy":{"javascript":false,"external_resources":false,"self_contained":true},"allowed_origins":["https://example.org"],"resources":` + resources + `}`
+	return manifestCommentStart + base64.StdEncoding.EncodeToString([]byte(json)) + manifestCommentEnd
+}
+
+func manifestFixtureWithPolicyAndRegions(t *testing.T, extra bool, format, profile string, javascript, externalResources, selfContained bool, regions string) string {
 	t.Helper()
 	extraField := ""
 	if extra {
 		extraField = `,"extra_field":"preserved"`
 	}
-	json := `{"format":` + format + `,"profile":` + profile + `,"generator":{"name":"tool","version":"0"},"publisher":{"name":"Publisher","origin":"https://example.org","url":"https://example.org"},"page":{"kind":"page","title":"Page","canonical_url":"https://example.org/page","published_utc":"","updated_utc":""},"policy":{"javascript":` + boolJSON(javascript) + `,"external_resources":` + boolJSON(externalResources) + `,"self_contained":` + boolJSON(selfContained) + `},"allowed_origins":["https://example.org"],"resources":[]` + extraField + `}`
+	regionField := ""
+	if regions != "" {
+		regionField = `,"regions":` + regions
+	}
+	json := `{"format":` + format + `,"profile":` + profile + `,"generator":{"name":"tool","version":"0"},"publisher":{"name":"Publisher","origin":"https://example.org","url":"https://example.org"},"page":{"kind":"page","title":"Page","canonical_url":"https://example.org/page","published_utc":"","updated_utc":""},"policy":{"javascript":` + boolJSON(javascript) + `,"external_resources":` + boolJSON(externalResources) + `,"self_contained":` + boolJSON(selfContained) + `},"allowed_origins":["https://example.org"],"resources":[]` + extraField + regionField + `}`
 	return manifestCommentStart + base64.StdEncoding.EncodeToString([]byte(json)) + manifestCommentEnd
 }
 

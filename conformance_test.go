@@ -19,7 +19,14 @@ type conformanceCase struct {
 	Fixture        string                 `json:"fixture"`
 	CheckPath      string                 `json:"check_path"`
 	ErrorSubstring string                 `json:"error_substring"`
+	Tamper         *conformanceTamper     `json:"tamper"`
 	Assertions     []conformanceAssertion `json:"assertions"`
+}
+
+type conformanceTamper struct {
+	File string `json:"file"`
+	Old  string `json:"old"`
+	New  string `json:"new"`
 }
 
 type conformanceAssertion struct {
@@ -108,6 +115,20 @@ func TestValidateConformanceCorpusReportsDrift(t *testing.T) {
 			t.Fatalf("validateConformanceCorpus error = %v, want duplicate fixture", err)
 		}
 	})
+	t.Run("tamper on non-check action", func(t *testing.T) {
+		err := validateConformanceCorpus(t.TempDir(), []conformanceCase{{
+			Name:   "bad-tamper",
+			Action: "build",
+			Tamper: &conformanceTamper{
+				File: "public/index.html",
+				Old:  "before",
+				New:  "after",
+			},
+		}})
+		if err == nil || !strings.Contains(err.Error(), "tamper is only valid for action \"check\"") {
+			t.Fatalf("validateConformanceCorpus error = %v, want tamper action guard", err)
+		}
+	})
 }
 
 func validateConformanceCorpus(root string, cases []conformanceCase) error {
@@ -121,6 +142,9 @@ func validateConformanceCorpus(root string, cases []conformanceCase) error {
 			return fmt.Errorf("duplicate conformance case name: %s", tc.Name)
 		}
 		names[tc.Name] = true
+		if tc.Tamper != nil && tc.Action != "check" {
+			return fmt.Errorf("conformance case %s: tamper is only valid for action \"check\"", tc.Name)
+		}
 		if tc.Fixture == "" {
 			continue
 		}
@@ -208,6 +232,11 @@ func checkConformanceSite(siteDir string, tc conformanceCase) error {
 	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	if tc.Tamper != nil {
+		if err := applyConformanceTamper(siteDir, *tc.Tamper); err != nil {
+			return err
+		}
+	}
 	checkPath := tc.CheckPath
 	if checkPath == "" {
 		checkPath = "public"
@@ -217,6 +246,23 @@ func checkConformanceSite(siteDir string, tc conformanceCase) error {
 		Mode:   conformanceCheckMode(tc.OutputMode),
 		Stdout: io.Discard,
 	})
+}
+
+func applyConformanceTamper(siteDir string, tamper conformanceTamper) error {
+	if tamper.File == "" || tamper.Old == "" || tamper.New == "" {
+		return fmt.Errorf("tamper must define file, old, and new")
+	}
+	path := filepath.Join(siteDir, filepath.FromSlash(tamper.File))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+	if strings.Count(content, tamper.Old) != 1 {
+		return fmt.Errorf("tamper old text %q must occur exactly once in %s", tamper.Old, tamper.File)
+	}
+	content = strings.Replace(content, tamper.Old, tamper.New, 1)
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func conformanceCheckMode(outputMode string) string {

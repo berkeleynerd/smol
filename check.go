@@ -143,8 +143,14 @@ func CheckHTML(html, mode string) error {
 			return fmt.Errorf("inline style %d: %w", i+1, err)
 		}
 	}
-	if _, _, err := ExtractManifest(html); err != nil {
+	m, ok, err := ExtractManifest(html)
+	if err != nil {
 		return err
+	}
+	if ok {
+		if err := compareDeclaredRegionHashes(m.Regions, html); err != nil {
+			return err
+		}
 	}
 	return nil
 }

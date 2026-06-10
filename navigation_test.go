@@ -162,8 +162,8 @@ func TestExplicitPageNavigationRendersOutsideAuthoredContent(t *testing.T) {
 	html := readText(t, filepath.Join(dir, "public", "about", "index.html"))
 	for _, want := range []string{
 		`<body id="top">`,
-		`<main id="content" data-smol-authored-content="true">`,
-		`<nav data-smol-generated-chrome="navigation" aria-label="Page navigation">`,
+		authoredContentOpen,
+		generatedNavigationOpen,
 		`<a href="#top" rel="top">Top</a>`,
 		`<a href="../index.html" rel="home">Home</a>`,
 		`<a href="../index.html" rel="up">Up: Home</a>`,
@@ -175,12 +175,12 @@ func TestExplicitPageNavigationRendersOutsideAuthoredContent(t *testing.T) {
 		}
 	}
 	mainClose := strings.Index(html, "</main>")
-	navAt := strings.Index(html, `data-smol-generated-chrome="navigation"`)
+	navAt := strings.Index(html, generatedNavigationOpen)
 	if mainClose < 0 || navAt < 0 || navAt < mainClose {
 		t.Fatalf("generated navigation was not rendered after main:\n%s", html)
 	}
-	body := between(html, `<main id="content" data-smol-authored-content="true">`, "\n  </main>")
-	if strings.Contains(body, `data-smol-generated-chrome`) || strings.Contains(body, `Next: Sample`) {
+	body := between(html, authoredContentOpen, authoredContentClose)
+	if strings.Contains(body, generatedNavigationOpen) || strings.Contains(body, `Next: Sample`) {
 		t.Fatalf("generated navigation leaked into authored content region:\n%s", body)
 	}
 }
@@ -196,7 +196,7 @@ func TestExplicitPageNavigationRendersFlatXHTMLHrefs(t *testing.T) {
 	html := readText(t, filepath.Join(dir, "public", "sample.html"))
 	for _, want := range []string{
 		`<body id="top">`,
-		`<main id="content" data-smol-authored-content="true">`,
+		authoredContentOpen,
 		`<a href="index.html" rel="home">Home</a>`,
 		`<a href="about.html" rel="up">Up: About</a>`,
 		`<a href="index.html" rel="previous">Previous: Home</a>`,

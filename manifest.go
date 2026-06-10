@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -19,6 +20,11 @@ type ManifestResource struct {
 	SHA256     string `json:"sha256"`
 }
 
+type ManifestRegion struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+}
+
 type manifest struct {
 	Format         string             `json:"format"`
 	Profile        string             `json:"profile"`
@@ -28,6 +34,7 @@ type manifest struct {
 	Policy         manifestPolicy     `json:"policy"`
 	AllowedOrigins []string           `json:"allowed_origins"`
 	Resources      []ManifestResource `json:"resources"`
+	Regions        []ManifestRegion   `json:"regions,omitempty"`
 }
 
 type manifestGenerator struct {
@@ -55,7 +62,7 @@ type manifestPolicy struct {
 	SelfContained     bool `json:"self_contained"`
 }
 
-func ManifestComment(site SiteView, page Page, resources []ManifestResource) (string, error) {
+func ManifestComment(site SiteView, page Page, resources []ManifestResource, regions []ManifestRegion) (string, error) {
 	if resources == nil {
 		resources = []ManifestResource{}
 	}
@@ -85,6 +92,7 @@ func ManifestComment(site SiteView, page Page, resources []ManifestResource) (st
 		},
 		AllowedOrigins: []string{site.CanonicalOrigin},
 		Resources:      resources,
+		Regions:        regions,
 	}
 	data, err := json.Marshal(m)
 	if err != nil {
@@ -199,6 +207,11 @@ func requireManifestFields(raw map[string]json.RawMessage) error {
 	if err := requireManifestResources(raw["resources"]); err != nil {
 		return err
 	}
+	if value, ok := raw["regions"]; ok {
+		if err := requireManifestRegions(value); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -257,8 +270,71 @@ func requireManifestResources(raw json.RawMessage) error {
 				return fmt.Errorf("invalid manifest: missing resources[%d].%s", i, field)
 			}
 		}
+		hash, err := manifestStringField(resource, "sha256")
+		if err != nil {
+			return fmt.Errorf("invalid manifest: resources[%d].sha256 must be a string", i)
+		}
+		if !isLowercaseSHA256Hex(hash) {
+			return fmt.Errorf("invalid manifest: resources[%d].sha256 must be lowercase hex SHA-256", i)
+		}
 	}
 	return nil
+}
+
+func requireManifestRegions(raw json.RawMessage) error {
+	if strings.TrimSpace(string(raw)) == "null" {
+		return fmt.Errorf("invalid manifest: regions must be an array")
+	}
+	var regions []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &regions); err != nil {
+		return fmt.Errorf("invalid manifest: regions must be an array")
+	}
+	seen := map[string]bool{}
+	for i, region := range regions {
+		for _, field := range []string{"name", "sha256"} {
+			if _, ok := region[field]; !ok {
+				return fmt.Errorf("invalid manifest: missing regions[%d].%s", i, field)
+			}
+		}
+		name, err := manifestStringField(region, "name")
+		if err != nil {
+			return fmt.Errorf("invalid manifest: regions[%d].name must be a string", i)
+		}
+		if seen[name] {
+			return fmt.Errorf("invalid manifest: duplicate region %q", name)
+		}
+		seen[name] = true
+		hash, err := manifestStringField(region, "sha256")
+		if err != nil {
+			return fmt.Errorf("invalid manifest: regions[%d].sha256 must be a string", i)
+		}
+		if isKnownRegionName(name) && !isLowercaseSHA256Hex(hash) {
+			return fmt.Errorf("invalid manifest: regions[%d].sha256 must be lowercase hex SHA-256", i)
+		}
+	}
+	return nil
+}
+
+func manifestStringField(object map[string]json.RawMessage, name string) (string, error) {
+	if strings.TrimSpace(string(object[name])) == "null" {
+		return "", fmt.Errorf("null")
+	}
+	var value string
+	if err := json.Unmarshal(object[name], &value); err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+func isLowercaseSHA256Hex(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	if strings.ToLower(value) != value {
+		return false
+	}
+	data, err := hex.DecodeString(value)
+	return err == nil && len(data) == 32
 }
 
 func wrapBase64(value string, width int) string {

@@ -42,9 +42,11 @@ output for consistent closing and static markup, not for DTD purity.
 
 ## Structural Regions
 
-Regions are a vocabulary for understanding generated output. Current emitted
-HTML only marks authored content and generated navigation when page navigation
-exists.
+Regions are a vocabulary for understanding generated output. Shipped starter
+themes wrap authored content on HTML pages with invisible comment delimiters and
+wrap generated navigation link bytes only when page navigation exists. Custom
+themes may omit these markers; `smol` records region hashes only for the exact
+literal comment marker pairs present in the rendered HTML.
 
 ### Page Top Anchor
 
@@ -59,39 +61,47 @@ When no page navigation is generated, the starter themes do not add this anchor.
 
 ### Authored Content
 
-Authored content is HTML derived from the page body source: `body.html`,
-`body.md`, or `body.gmi` rendered to HTML.
+Authored content is exactly the HTML byte string derived from the page body
+source: `body.html`, `body.md`, or `body.gmi` rendered to HTML. Page titles,
+post dates, generated post lists, navigation, and theme shell are not part of
+the authored-content region.
 
-When `.PageNav.HasLinks` is true in the starter themes, authored content is
-inside:
+In shipped starter themes, authored content is inside the exact comment marker
+pair:
 
 ```html
-<main id="content" data-smol-authored-content="true">
+<!--smol:authored-content-->...<!--/smol:authored-content-->
 ```
 
-When no page navigation is generated, the starter themes do not add this marker
-so link-less output remains byte-stable.
+Custom themes are not required to emit this marker. When it is absent, no
+`authored-content` region hash is recorded. The starter themes also use
+`<main id="content">` as a semantic landmark and link target, but the `main`
+element is not the region boundary. Only the exact comment markers define the
+v1 authored-content boundary.
 
 ### Generated Navigation
 
 Generated navigation is navigation synthesized from `page.json` `links`, page
 titles, and output routing.
 
-In HTML starter output, generated navigation is:
+In HTML starter output, generated navigation is rendered as a normal navigation
+landmark:
 
 ```html
-<nav data-smol-generated-chrome="navigation" aria-label="Page navigation">
+<nav aria-label="Page navigation">
+<!--smol:generated-navigation-->...<!--/smol:generated-navigation-->
+</nav>
 ```
 
-This region can include synthesized links in addition to author-declared
-targets:
+The `generated-navigation` hash covers only the generated link bytes between
+the comment markers. It excludes the `<nav>` tag and its attributes. This
+region can include synthesized links in addition to author-declared targets:
 
 - `Top`, an HTML-only `#top` link;
 - `Home`, when an `index` page exists and the source page is not `index`;
 - `Up`, `Previous`, `Next`, and `Related` links from `page.json`.
 
-The emitted attribute names this as navigation-flavored generated chrome. It is
-not a separately signed region.
+Generated navigation is not a separately signed region.
 
 ### Chrome
 
@@ -100,7 +110,7 @@ navigation, such as headers, footers, inline CSS, site navigation, and template
 structure.
 
 Chrome is implicit in v1. The starter themes do not emit a dedicated
-`data-smol-region="chrome"` marker.
+chrome comment marker.
 
 ## Gemini Equivalence
 
@@ -113,7 +123,34 @@ The HTML-only `Top` link is not emitted in Gemini.
 ## Manifest
 
 Nested HTML output includes a `SMOL ATTESTED MANIFEST V1` comment. The manifest
-is covered by the whole-page signature only when signing is enabled. Flat XHTML
-and Gemini outputs do not carry an embedded manifest today.
+is covered by the whole-page signature only when signing is enabled. Nested
+manifests may include byte-exact hashes for declared `authored-content` and
+`generated-navigation` regions. These hashes are computed from the raw bytes
+between the first exact close marker after the single exact open marker. They
+are whitespace- and line-ending-sensitive provenance and diff aids, not
+independent signatures. Region hashing does not normalize line endings.
+
+The four current region marker strings are reserved inside rendered HTML body
+content:
+
+```html
+<!--smol:authored-content-->
+<!--/smol:authored-content-->
+<!--smol:generated-navigation-->
+<!--/smol:generated-navigation-->
+```
+
+`smol build` rejects HTML body output containing those tokens before page
+assembly. `smol check` is declaration-driven: when a manifest declares a known
+region, the matching comment marker pair must exist exactly once and its hash
+must match. Known marker-looking comments that are not declared in the manifest
+are not scanned by `smol check` in v1.
+
+The manifest output must stay outside hashed regions. If a theme places the
+manifest inside a marked region, `smol build` rejects the page because the
+recorded region bytes would change between the no-region and final manifest
+render passes.
+
+Flat XHTML and Gemini outputs do not carry an embedded manifest today.
 
 See `docs/smol-attested-manifest-v1.md` for the manifest format.

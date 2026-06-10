@@ -29,10 +29,14 @@ type BuildOptions struct {
 }
 
 type SmolView struct {
-	Version         string
-	Profile         string
-	InlineCSS       template.CSS
-	ManifestComment template.HTML
+	Version                  string
+	Profile                  string
+	InlineCSS                template.CSS
+	ManifestComment          template.HTML
+	AuthoredContentOpen      template.HTML
+	AuthoredContentClose     template.HTML
+	GeneratedNavigationOpen  template.HTML
+	GeneratedNavigationClose template.HTML
 }
 
 type TemplateRoot struct {
@@ -137,19 +141,15 @@ func BuildSite(opts BuildOptions) error {
 		if err != nil {
 			return err
 		}
+		if err := validateNoReservedRegionMarkers(page, rendered); err != nil {
+			return err
+		}
 		if err := ValidateHTMLForMode(rendered, siteCfg.OutputMode); err != nil {
 			return err
 		}
 		page.ContentHTML = template.HTML(rendered)
 		resources := append([]ManifestResource{}, cssResources...)
 		resources = append(resources, imageResources...)
-		comment := ""
-		if siteCfg.OutputMode != outputModeFlatXHTML {
-			comment, err = ManifestComment(site, page, resources)
-			if err != nil {
-				return err
-			}
-		}
 		root := TemplateRoot{
 			Site:    site,
 			Page:    page,
@@ -158,13 +158,21 @@ func BuildSite(opts BuildOptions) error {
 			Nav:     siteCfg.Nav,
 			PageNav: page.Navigation,
 			Smol: SmolView{
-				Version:         Version,
-				Profile:         Profile,
-				InlineCSS:       template.CSS(css),
-				ManifestComment: template.HTML(comment),
+				Version:                  Version,
+				Profile:                  Profile,
+				InlineCSS:                template.CSS(css),
+				AuthoredContentOpen:      template.HTML(authoredContentOpen),
+				AuthoredContentClose:     template.HTML(authoredContentClose),
+				GeneratedNavigationOpen:  template.HTML(generatedNavigationOpen),
+				GeneratedNavigationClose: template.HTML(generatedNavigationClose),
 			},
 		}
-		html, err := renderFullPage(themeDir, themeCfg, page.Kind, page.Slug, root)
+		var html string
+		if siteCfg.OutputMode == outputModeFlatXHTML {
+			html, err = renderFullPage(themeDir, themeCfg, page.Kind, page.Slug, root)
+		} else {
+			html, err = renderNestedPage(themeDir, themeCfg, site, page, resources, root)
+		}
 		if err != nil {
 			return err
 		}
@@ -212,6 +220,39 @@ func BuildSite(opts BuildOptions) error {
 		fmt.Fprintln(opts.Stdout, "note: generated unsigned HTML; run with --sign-key to create attested pages")
 	}
 	return nil
+}
+
+func renderNestedPage(themeDir string, themeCfg ThemeConfig, site SiteView, page Page, resources []ManifestResource, root TemplateRoot) (string, error) {
+	comment, err := ManifestComment(site, page, resources, nil)
+	if err != nil {
+		return "", err
+	}
+	root.Smol.ManifestComment = template.HTML(comment)
+	passOneHTML, err := renderFullPage(themeDir, themeCfg, page.Kind, page.Slug, root)
+	if err != nil {
+		return "", err
+	}
+	hashes, err := regionHashes(passOneHTML)
+	if err != nil {
+		return "", fmt.Errorf("%s %q region hashing: %w", page.Kind, page.Slug, err)
+	}
+	comment, err = ManifestComment(site, page, resources, manifestRegionsFromHashes(hashes))
+	if err != nil {
+		return "", err
+	}
+	root.Smol.ManifestComment = template.HTML(comment)
+	html, err := renderFullPage(themeDir, themeCfg, page.Kind, page.Slug, root)
+	if err != nil {
+		return "", err
+	}
+	finalHashes, err := regionHashes(html)
+	if err != nil {
+		return "", fmt.Errorf("%s %q final region hashing: %w", page.Kind, page.Slug, err)
+	}
+	if err := compareRegionHashes(hashes, finalHashes); err != nil {
+		return "", fmt.Errorf("%s %q region content changed between manifest passes: %w; ensure manifest output is outside marked regions", page.Kind, page.Slug, err)
+	}
+	return html, nil
 }
 
 func resolveOutputDir(siteDir, outDir string) string {
@@ -295,7 +336,14 @@ func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []Manifest
 		Site: site,
 		Page: page,
 		Nav:  nav,
-		Smol: SmolView{Version: Version, Profile: Profile},
+		Smol: SmolView{
+			Version:                  Version,
+			Profile:                  Profile,
+			AuthoredContentOpen:      template.HTML(authoredContentOpen),
+			AuthoredContentClose:     template.HTML(authoredContentClose),
+			GeneratedNavigationOpen:  template.HTML(generatedNavigationOpen),
+			GeneratedNavigationClose: template.HTML(generatedNavigationClose),
+		},
 	})
 	if err != nil {
 		return "", nil, err

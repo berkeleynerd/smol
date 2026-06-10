@@ -14,7 +14,8 @@ capsules from Gemtext or Markdown source.
 - Renders constrained Markdown/XHTML and Gemtext source bodies for HTML output.
 - Checks already-built HTML/XHTML/Gemini output against the static no-JS profile.
 - Adds a `SMOL ATTESTED MANIFEST V1` comment to nested HTML output inside the
-  signed payload.
+  signed payload, including embedded resource provenance and byte-exact region
+  hashes for drift checks.
 - Automatically calls `attest` / `attested-html sign` as the final build step
   when a signing key is configured and a signer is discoverable.
 
@@ -145,6 +146,8 @@ self-links, duplicate `related` targets, and external URLs are rejected. Themes
 can render the resolved links with `.PageNav`; the starter themes render them as
 generated navigation chrome outside the authored content body. This is
 structural isolation only: signed HTML still covers the full generated page.
+Manifest region hashes are provenance and drift-check aids; tamper resistance
+comes from the whole-page attested signature.
 See `docs/smol-static-nojs-v1.md` for the output profile contract and
 `docs/smol-attested-manifest-v1.md` for manifest fields.
 
@@ -253,9 +256,9 @@ smol check --mode flat-gemini-v1 public
 The default mode applies the strict nested HTML policy to `.html` and `.xhtml`
 files. Use `--mode flat-xhtml-v1` for flat XHTML output and
 `--mode flat-gemini-v1` for Gemini capsule output. `.gmi` files are validated as
-Gemtext. `smol check` validates static policy, inline CSS, and manifest
-well-formedness when a manifest is present; it does not verify cryptographic
-signatures.
+Gemtext. `smol check` validates static policy, inline CSS, manifest
+well-formedness, and declared manifest region hashes when a manifest is present;
+it does not verify cryptographic signatures.
 
 ## Publishing
 

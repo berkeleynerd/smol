@@ -11,13 +11,19 @@ fixtures are in this tier. The same navigation failures are also covered through
 
 Reference output-shape fixtures use shipped smol starters plus fixture overlays.
 They check byte boundaries, generated navigation placement, route-relative
-links, manifest absence in flat modes, and Gemini capsule shape. These fixtures
-are intentionally smol-reference-specific.
+links, manifest region provenance, manifest absence in flat modes, and Gemini
+capsule shape. These fixtures are intentionally smol-reference-specific.
 
 Check fixtures use `action: "check"` to verify already-built output through the
 public `smol check` path. Starter-backed check fixtures build first, then check
 `public/`; direct check fixtures provide the already-built file under
 `check_path`.
+
+Check fixtures may include a `tamper` object with `file`, `old`, and `new`.
+Tamper applies only to `action: "check"` after any starter-backed build and
+before `smol check`; `old` must occur exactly once. Tampered fixtures should use
+benign byte edits that preserve static-policy validity so the expected failure
+comes from the intended conformance check.
 
 Invalid fixtures should be single-defect cases so the expected error substring
 identifies the intended failure.
