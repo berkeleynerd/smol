@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -152,6 +153,37 @@ func TestPublishBuildsBeforePublishingByDefault(t *testing.T) {
 	}
 }
 
+func TestPublishPassesSignKeyOverrideToBuild(t *testing.T) {
+	dir := testSite(t)
+	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	var got BuildOptions
+	runner := &recordingPublishRunner{}
+	if err := PublishSite(PublishOptions{
+		SiteDir:       dir,
+		SignKey:       "CLI-KEY",
+		SignKeySource: true,
+		commandRunner: runner,
+		buildSite: func(opts BuildOptions) error {
+			got = opts
+			return BuildSite(BuildOptions{
+				SiteDir:  opts.SiteDir,
+				OutDir:   opts.OutDir,
+				Unsigned: true,
+				Force:    opts.Force,
+				Stdout:   opts.Stdout,
+			})
+		},
+	}); err != nil {
+		t.Fatalf("PublishSite: %v", err)
+	}
+	if got.SignKey != "CLI-KEY" || !got.SignKeySource {
+		t.Fatalf("build options SignKey=%q SignKeySource=%v, want CLI override", got.SignKey, got.SignKeySource)
+	}
+	if len(runner.commands) != 3 {
+		t.Fatalf("command count = %d, want 3", len(runner.commands))
+	}
+}
+
 func TestPublishBuildCleansOutputBeforePublishing(t *testing.T) {
 	dir := testSite(t)
 	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
@@ -196,6 +228,21 @@ func TestPublishNoBuildRequiresExistingOutputDirectory(t *testing.T) {
 	}
 	if len(runner.commands) != 0 {
 		t.Fatalf("commands ran despite missing output: %#v", runner.commands)
+	}
+}
+
+func TestPublishNoBuildRejectsExplicitSignKeyAtAPI(t *testing.T) {
+	dir := testSite(t)
+	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	writeText(t, filepath.Join(dir, "public", "index.html"), "ready\n")
+	err := PublishSite(PublishOptions{
+		SiteDir:       dir,
+		NoBuild:       true,
+		SignKey:       "KEY",
+		SignKeySource: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "--no-build skips the build phase") {
+		t.Fatalf("expected no-build signing error, got %v", err)
 	}
 }
 
@@ -257,6 +304,37 @@ func TestPublishDryRunHonorsNoBuild(t *testing.T) {
 	}
 }
 
+func TestPublishNoBuildRejectsExplicitSigningFlags(t *testing.T) {
+	dir := testSite(t)
+	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	tests := map[string][]string{
+		"interactive sign": {"--no-build", "--sign", dir},
+		"explicit key":     {"--no-build", "--sign-key", "KEY", dir},
+	}
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := commandPublish(args, &strings.Builder{})
+			if err == nil || !strings.Contains(err.Error(), "--no-build skips the build phase") {
+				t.Fatalf("commandPublish error = %v, want no-build signing usage error", err)
+			}
+		})
+	}
+}
+
+func TestPublishNoBuildAllowsConfigSignKeyAndUnsignedSigningFlags(t *testing.T) {
+	dir := testSite(t)
+	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	replaceInFile(t, filepath.Join(dir, "smol.json"), `"sign_key": ""`, `"sign_key": "CONFIG"`)
+	writeText(t, filepath.Join(dir, "public", "index.html"), "ready\n")
+	var out strings.Builder
+	if err := commandPublish([]string{"--dry-run", "--no-build", "--unsigned", "--sign", dir}, &out); err != nil {
+		t.Fatalf("commandPublish no-build unsigned sign: %v", err)
+	}
+	if !strings.Contains(out.String(), "dry-run: would publish existing output: public") {
+		t.Fatalf("stdout = %s", out.String())
+	}
+}
+
 func TestPublishDryRunNoBuildRequiresExistingOutputDirectory(t *testing.T) {
 	dir := testSite(t)
 	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
@@ -275,6 +353,127 @@ func TestPublishDryRunRejectsUnsafeBuildOutputDirectory(t *testing.T) {
 	err := commandPublish([]string{"--dry-run", "--out", ".", dir}, &strings.Builder{})
 	if err == nil || !strings.Contains(err.Error(), "refusing to remove output directory that contains site directory") {
 		t.Fatalf("expected unsafe output error, got %v", err)
+	}
+}
+
+func TestPublishDryRunSignDoesNotPrompt(t *testing.T) {
+	dir := testSite(t)
+	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	called := false
+	withSecretKeys(t, func() ([]gpgSecretKey, error) {
+		called = true
+		return []gpgSecretKey{{Fingerprint: "FPR", UID: "Curator <curator@example.org>"}}, nil
+	})
+	var out, stderr strings.Builder
+	if err := commandPublishWithIO([]string{"--dry-run", "--sign", dir}, strings.NewReader("y\n"), &out, &stderr, true); err != nil {
+		t.Fatalf("commandPublishWithIO dry-run sign: %v", err)
+	}
+	if !called {
+		t.Fatalf("dry-run --sign did not probe secret keys")
+	}
+	if stderr.String() != "" {
+		t.Fatalf("dry-run --sign prompted on stderr: %s", stderr.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "dry-run: would build output: public") || !strings.Contains(got, "dry-run: signing key would be resolved on a real run") {
+		t.Fatalf("dry-run output = %s", got)
+	}
+}
+
+func TestPublishDryRunSignKeyNotesExplicitKey(t *testing.T) {
+	dir := testSite(t)
+	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	withSecretKeys(t, func() ([]gpgSecretKey, error) {
+		t.Fatalf("dry-run --sign-key should not list secret keys")
+		return nil, nil
+	})
+	var out strings.Builder
+	if err := commandPublishWithIO([]string{"--dry-run", "--sign-key", "KEY", dir}, strings.NewReader(""), &out, &strings.Builder{}, false); err != nil {
+		t.Fatalf("commandPublishWithIO dry-run sign-key: %v", err)
+	}
+	if !strings.Contains(out.String(), "dry-run: would sign with key KEY") {
+		t.Fatalf("dry-run output missing explicit signing note: %s", out.String())
+	}
+}
+
+func TestPublishDryRunSignPreflightsBeforeKeyProbe(t *testing.T) {
+	dir := testSite(t)
+	writePublishConfig(t, dir, "", "", 22, "/srv/site")
+	withSecretKeys(t, func() ([]gpgSecretKey, error) {
+		t.Fatalf("dry-run --sign listed keys before publish target validation")
+		return nil, nil
+	})
+	err := commandPublishWithIO([]string{"--dry-run", "--sign", dir}, strings.NewReader("y\n"), &strings.Builder{}, &strings.Builder{}, true)
+	if err == nil || !strings.Contains(err.Error(), "publish host is required") {
+		t.Fatalf("expected publish target validation error, got %v", err)
+	}
+}
+
+func TestPublishDryRunSignAvailabilityErrors(t *testing.T) {
+	dir := testSite(t)
+	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	tests := map[string]struct {
+		interactive bool
+		keys        func() ([]gpgSecretKey, error)
+		want        string
+	}{
+		"non interactive": {
+			interactive: false,
+			keys: func() ([]gpgSecretKey, error) {
+				return []gpgSecretKey{{Fingerprint: "FPR"}}, nil
+			},
+			want: "interactive signing requires a terminal",
+		},
+		"zero keys": {
+			interactive: true,
+			keys: func() ([]gpgSecretKey, error) {
+				return nil, nil
+			},
+			want: "no GPG secret keys found",
+		},
+		"missing gpg": {
+			interactive: true,
+			keys: func() ([]gpgSecretKey, error) {
+				return nil, errors.New("gpg not found on PATH")
+			},
+			want: "gpg not found on PATH",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			withSecretKeys(t, tc.keys)
+			err := commandPublishWithIO([]string{"--dry-run", "--sign", dir}, strings.NewReader(""), &strings.Builder{}, &strings.Builder{}, tc.interactive)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("commandPublishWithIO error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestPublishCommandInteractiveSignAccepts(t *testing.T) {
+	dir := testSite(t)
+	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	withSecretKeys(t, func() ([]gpgSecretKey, error) {
+		return []gpgSecretKey{{Fingerprint: "FPR", UID: "Curator <curator@example.org>"}}, nil
+	})
+	original := runPublishSite
+	var got PublishOptions
+	runPublishSite = func(opts PublishOptions) error {
+		got = opts
+		return nil
+	}
+	t.Cleanup(func() {
+		runPublishSite = original
+	})
+	var out, stderr strings.Builder
+	if err := commandPublishWithIO([]string{"--sign", dir}, strings.NewReader("y\n"), &out, &stderr, true); err != nil {
+		t.Fatalf("commandPublishWithIO: %v", err)
+	}
+	if got.SignKey != "FPR" || !got.SignKeySource {
+		t.Fatalf("publish options SignKey=%q SignKeySource=%v, want selected key", got.SignKey, got.SignKeySource)
+	}
+	if !strings.Contains(stderr.String(), "Curator <curator@example.org>") {
+		t.Fatalf("stderr missing signing prompt: %s", stderr.String())
 	}
 }
 

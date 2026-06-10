@@ -13,20 +13,22 @@ import (
 )
 
 type PublishOptions struct {
-	SiteDir  string
-	OutDir   string
-	NoBuild  bool
-	Unsigned bool
-	DryRun   bool
-	Host     string
-	User     string
-	Port     int
-	Path     string
-	HostSet  bool
-	UserSet  bool
-	PortSet  bool
-	PathSet  bool
-	Stdout   io.Writer
+	SiteDir       string
+	OutDir        string
+	NoBuild       bool
+	SignKey       string
+	SignKeySource bool
+	Unsigned      bool
+	DryRun        bool
+	Host          string
+	User          string
+	Port          int
+	Path          string
+	HostSet       bool
+	UserSet       bool
+	PortSet       bool
+	PathSet       bool
+	Stdout        io.Writer
 
 	commandRunner publishCommandRunner
 	buildSite     func(BuildOptions) error
@@ -62,6 +64,9 @@ func PublishSite(opts PublishOptions) error {
 	if opts.Stdout == nil {
 		opts.Stdout = io.Discard
 	}
+	if opts.NoBuild && opts.SignKey != "" && !opts.Unsigned {
+		return fmt.Errorf("--no-build skips the build phase, so signing cannot run")
+	}
 	siteDir, err := filepath.Abs(opts.SiteDir)
 	if err != nil {
 		return err
@@ -73,6 +78,9 @@ func PublishSite(opts PublishOptions) error {
 	target, err := publishTargetFromConfig(siteCfg.Publish, opts)
 	if err != nil {
 		return err
+	}
+	if !opts.Unsigned && opts.SignKey != "" && siteCfg.OutputMode == outputModeFlatGemini {
+		return fmt.Errorf("signing is not supported for flat-gemini-v1")
 	}
 	outDir := resolveOutputDir(siteDir, opts.OutDir)
 	commands := publishCommands(outDir, target)
@@ -93,11 +101,13 @@ func PublishSite(opts PublishOptions) error {
 			build = BuildSite
 		}
 		if err := build(BuildOptions{
-			SiteDir:  siteDir,
-			OutDir:   opts.OutDir,
-			Unsigned: opts.Unsigned,
-			Force:    true,
-			Stdout:   opts.Stdout,
+			SiteDir:       siteDir,
+			OutDir:        opts.OutDir,
+			SignKey:       opts.SignKey,
+			SignKeySource: opts.SignKeySource,
+			Unsigned:      opts.Unsigned,
+			Force:         true,
+			Stdout:        opts.Stdout,
 		}); err != nil {
 			return err
 		}

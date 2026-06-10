@@ -224,6 +224,72 @@ func SignHTML(attestTool, key, input, output string) error {
 	return fmt.Errorf("attest signer could not be started: %w", err)
 }
 
+type gpgSecretKey struct {
+	Fingerprint string
+	UID         string
+}
+
+var listSecretKeys = listGPGSecretKeys
+
+func listGPGSecretKeys() ([]gpgSecretKey, error) {
+	gpg, err := exec.LookPath("gpg")
+	if err != nil {
+		return nil, fmt.Errorf("gpg not found on PATH")
+	}
+	cmd := exec.Command(gpg, "--list-secret-keys", "--with-colons")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := stderr.String()
+		if msg == "" {
+			msg = stdout.String()
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("list GPG secret keys: %s", trimForError(msg))
+	}
+	return parseGPGSecretKeys(stdout.String()), nil
+}
+
+func parseGPGSecretKeys(output string) []gpgSecretKey {
+	keys := []gpgSecretKey{}
+	wantPrimaryFingerprint := false
+	current := -1
+	for _, line := range strings.Split(output, "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, ":")
+		if len(fields) == 0 {
+			continue
+		}
+		switch fields[0] {
+		case "sec":
+			wantPrimaryFingerprint = true
+			current = -1
+		case "fpr":
+			if !wantPrimaryFingerprint || len(fields) <= 9 || fields[9] == "" {
+				continue
+			}
+			fingerprint := fields[9]
+			keys = append(keys, gpgSecretKey{Fingerprint: fingerprint})
+			current = len(keys) - 1
+			wantPrimaryFingerprint = false
+		case "uid":
+			if current >= 0 && keys[current].UID == "" && len(fields) > 9 {
+				keys[current].UID = fields[9]
+			}
+		case "ssb", "sub", "pub":
+			wantPrimaryFingerprint = false
+			current = -1
+		}
+	}
+	return keys
+}
+
 func trimForError(value string) string {
 	value = bytes.NewBufferString(value).String()
 	for len(value) > 0 {

@@ -217,7 +217,7 @@ func BuildSite(opts BuildOptions) error {
 		fmt.Fprintf(opts.Stdout, "signed: %s\n", cleanSlash(relativeDisplay(siteDir, result.finalPath)))
 	}
 	if opts.SignKey == "" {
-		fmt.Fprintln(opts.Stdout, "note: generated unsigned HTML; run with --sign-key to create attested pages")
+		fmt.Fprintln(opts.Stdout, "note: generated unsigned HTML; run with --sign or --sign-key to create attested pages")
 	}
 	return nil
 }

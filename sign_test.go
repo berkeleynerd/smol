@@ -209,6 +209,103 @@ func TestConfigSignKeyAutoSigns(t *testing.T) {
 	}
 }
 
+func TestBuildCommandDoesNotAutoSignSoleSecretKey(t *testing.T) {
+	dir := testSite(t)
+	fake := fakeSigner(t, t.TempDir(), "fake-attest", 0)
+	called := false
+	withSecretKeys(t, func() ([]gpgSecretKey, error) {
+		called = true
+		return []gpgSecretKey{{Fingerprint: "AUTO-FPR", UID: "Curator <curator@example.org>"}}, nil
+	})
+	var out, stderr strings.Builder
+	err := commandBuildWithIO([]string{"--attest", fake, dir}, strings.NewReader("y\n"), &out, &stderr, true)
+	if err != nil {
+		t.Fatalf("commandBuildWithIO unsigned: %v", err)
+	}
+	html := readText(t, filepath.Join(dir, "public", "index.html"))
+	if strings.Contains(html, "FAKE-SIGNED") {
+		t.Fatalf("build auto-signed without --sign: %s", html)
+	}
+	if called {
+		t.Fatalf("listed secret keys without --sign")
+	}
+}
+
+func TestBuildCommandInteractiveSignSingleKeyAccepts(t *testing.T) {
+	dir := testSite(t)
+	fake := fakeSigner(t, t.TempDir(), "fake-attest", 0)
+	withSecretKeys(t, func() ([]gpgSecretKey, error) {
+		return []gpgSecretKey{{Fingerprint: "AUTO-FPR", UID: "Curator <curator@example.org>"}}, nil
+	})
+	var out, stderr strings.Builder
+	err := commandBuildWithIO([]string{"--sign", "--attest", fake, dir}, strings.NewReader("y\n"), &out, &stderr, true)
+	if err != nil {
+		t.Fatalf("commandBuildWithIO interactive sign: %v", err)
+	}
+	html := readText(t, filepath.Join(dir, "public", "index.html"))
+	if !strings.Contains(html, "FAKE-SIGNED key=AUTO-FPR") {
+		t.Fatalf("signed output did not use selected key: %s", html)
+	}
+	if !strings.Contains(stderr.String(), "Curator <curator@example.org>") {
+		t.Fatalf("stderr missing key prompt: %s", stderr.String())
+	}
+}
+
+func TestBuildCommandInteractiveDeclineBypassesConfigSignKey(t *testing.T) {
+	dir := testSite(t)
+	replaceInFile(t, filepath.Join(dir, "smol.json"), `"sign_key": ""`, `"sign_key": "CONFIG"`)
+	fake := fakeSigner(t, t.TempDir(), "fake-attest", 0)
+	withSecretKeys(t, func() ([]gpgSecretKey, error) {
+		return []gpgSecretKey{{Fingerprint: "AUTO-FPR", UID: "Curator <curator@example.org>"}}, nil
+	})
+	var out, stderr strings.Builder
+	err := commandBuildWithIO([]string{"--sign", "--attest", fake, dir}, strings.NewReader("\n"), &out, &stderr, true)
+	if err != nil {
+		t.Fatalf("commandBuildWithIO interactive decline: %v", err)
+	}
+	html := readText(t, filepath.Join(dir, "public", "index.html"))
+	if strings.Contains(html, "FAKE-SIGNED") {
+		t.Fatalf("declined interactive signing fell back to config key: %s", html)
+	}
+}
+
+func TestBuildCommandInteractiveSignMultipleKeysSelectsNumber(t *testing.T) {
+	dir := testSite(t)
+	fake := fakeSigner(t, t.TempDir(), "fake-attest", 0)
+	withSecretKeys(t, func() ([]gpgSecretKey, error) {
+		return []gpgSecretKey{
+			{Fingerprint: "FPR1", UID: "One <one@example.org>"},
+			{Fingerprint: "FPR2", UID: "Two <two@example.org>"},
+		}, nil
+	})
+	var out, stderr strings.Builder
+	err := commandBuildWithIO([]string{"--sign", "--attest", fake, dir}, strings.NewReader("2\n"), &out, &stderr, true)
+	if err != nil {
+		t.Fatalf("commandBuildWithIO interactive multi-key sign: %v", err)
+	}
+	html := readText(t, filepath.Join(dir, "public", "index.html"))
+	if !strings.Contains(html, "FAKE-SIGNED key=FPR2") {
+		t.Fatalf("signed output did not use selected key: %s", html)
+	}
+	if !strings.Contains(stderr.String(), "1) FPR1") || !strings.Contains(stderr.String(), "2) FPR2") {
+		t.Fatalf("stderr missing key list: %s", stderr.String())
+	}
+}
+
+func TestBuildCommandSignPreflightsBeforeKeyLookup(t *testing.T) {
+	dir := testSite(t)
+	writeText(t, filepath.Join(dir, "smol.json"), "{")
+	withSecretKeys(t, func() ([]gpgSecretKey, error) {
+		t.Fatalf("--sign listed keys before config validation")
+		return nil, nil
+	})
+	var out, stderr strings.Builder
+	err := commandBuildWithIO([]string{"--sign", dir}, strings.NewReader("y\n"), &out, &stderr, true)
+	if err == nil || !strings.Contains(err.Error(), "invalid smol.json") {
+		t.Fatalf("commandBuildWithIO error = %v, want config validation error", err)
+	}
+}
+
 func TestCLIKeyOverridesConfigSignKey(t *testing.T) {
 	dir := testSite(t)
 	replaceInFile(t, filepath.Join(dir, "smol.json"), `"sign_key": ""`, `"sign_key": "CONFIG"`)
@@ -226,6 +323,106 @@ func TestCLIKeyOverridesConfigSignKey(t *testing.T) {
 	if !strings.Contains(html, "FAKE-SIGNED key=CLI") {
 		t.Fatalf("signed output did not use CLI key: %s", html)
 	}
+}
+
+func TestBuildCommandInteractiveSignErrors(t *testing.T) {
+	tests := map[string]struct {
+		keys        func() ([]gpgSecretKey, error)
+		stdin       string
+		interactive bool
+		want        string
+	}{
+		"non interactive": {
+			keys: func() ([]gpgSecretKey, error) {
+				return []gpgSecretKey{{Fingerprint: "FPR"}}, nil
+			},
+			interactive: false,
+			want:        "interactive signing requires a terminal",
+		},
+		"missing gpg": {
+			keys: func() ([]gpgSecretKey, error) {
+				return nil, errors.New("gpg not found on PATH")
+			},
+			interactive: true,
+			want:        "gpg not found on PATH",
+		},
+		"zero keys": {
+			keys: func() ([]gpgSecretKey, error) {
+				return nil, nil
+			},
+			interactive: true,
+			want:        "no GPG secret keys found",
+		},
+		"invalid selection": {
+			keys: func() ([]gpgSecretKey, error) {
+				return []gpgSecretKey{{Fingerprint: "FPR1"}, {Fingerprint: "FPR2"}}, nil
+			},
+			stdin:       "wat\n",
+			interactive: true,
+			want:        "invalid signing key selection",
+		},
+		"plus selection": {
+			keys: func() ([]gpgSecretKey, error) {
+				return []gpgSecretKey{{Fingerprint: "FPR1"}, {Fingerprint: "FPR2"}}, nil
+			},
+			stdin:       "+2\n",
+			interactive: true,
+			want:        "invalid signing key selection",
+		},
+		"leading zero selection": {
+			keys: func() ([]gpgSecretKey, error) {
+				return []gpgSecretKey{{Fingerprint: "FPR1"}, {Fingerprint: "FPR2"}}, nil
+			},
+			stdin:       "02\n",
+			interactive: true,
+			want:        "invalid signing key selection",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := testSite(t)
+			fake := fakeSigner(t, t.TempDir(), "fake-attest", 0)
+			withSecretKeys(t, tc.keys)
+			var out, stderr strings.Builder
+			err := commandBuildWithIO([]string{"--sign", "--attest", fake, dir}, strings.NewReader(tc.stdin), &out, &stderr, tc.interactive)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("commandBuildWithIO error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseGPGSecretKeys(t *testing.T) {
+	output := strings.Join([]string{
+		"sec:u:255:22:AE2EC3CBB111EB87:1780994685:1844066685::u:::scSC:::+::ed25519:::0:",
+		"fpr:::::::::C6174EFE4839EBCFE724670FAE2EC3CBB111EB87:",
+		"grp:::::::::6A9107DA918321A0B13C4C31E255063F713AE874:",
+		"uid:u::::1780994685::1961FA92FF2E461EEFFD15B41640765B10BB682B::Curator <curator@example.org>::::::::::0:",
+		"ssb:u:255:22:1111111111111111:1780994685::::::e:::+::ed25519:::0:",
+		"fpr:::::::::1111111111111111111111111111111111111111:",
+		"sec:u:255:22:2222222222222222:1780994685:1844066685::u:::scSC:::+::ed25519:::0:",
+		"fpr:::::::::2222222222222222222222222222222222222222:",
+		"uid:u::::1780994685::1961FA92FF2E461EEFFD15B41640765B10BB682B::Second <second@example.org>::::::::::0:",
+	}, "\n")
+	keys := parseGPGSecretKeys(output)
+	if len(keys) != 2 {
+		t.Fatalf("keys = %#v, want 2 primary keys", keys)
+	}
+	if keys[0].Fingerprint != "C6174EFE4839EBCFE724670FAE2EC3CBB111EB87" || keys[0].UID != "Curator <curator@example.org>" {
+		t.Fatalf("first key = %#v", keys[0])
+	}
+	if keys[1].Fingerprint != "2222222222222222222222222222222222222222" || keys[1].UID != "Second <second@example.org>" {
+		t.Fatalf("second key = %#v", keys[1])
+	}
+}
+
+func withSecretKeys(t *testing.T, fn func() ([]gpgSecretKey, error)) {
+	t.Helper()
+	original := listSecretKeys
+	listSecretKeys = fn
+	t.Cleanup(func() {
+		listSecretKeys = original
+	})
 }
 
 func TestUnsignedSuppressesConfigAndCLIKeys(t *testing.T) {

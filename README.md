@@ -52,9 +52,10 @@ cd mysite
 smol new post hello-world "Hello World"
 smol build
 smol check public
-smol build --sign-key FINGERPRINT
 smol publish --dry-run
 smol publish
+smol build --sign
+smol build --sign-key FINGERPRINT
 ```
 
 Build options must appear before positional arguments:
@@ -108,9 +109,11 @@ public/
 
 Optional fields include `description`, `language`, `publisher`, `theme`,
 `output_mode`, `sign_key`, `nav`, and `publish`. If `--sign-key` is supplied,
-it overrides `sign_key` in `smol.json`. Use `--unsigned` to suppress signing
-even when a key is configured. The signing key value is a fingerprint or key ID,
-not a secret, but private signing keys should not be placed in cloud workspaces.
+it overrides `sign_key` in `smol.json`. Use `--sign` to choose a local GPG
+secret key interactively for a single build or publish run. Use `--unsigned` to
+suppress signing even when a key is configured or selected. The signing key
+value is a fingerprint or key ID, not a secret, but private signing keys should
+not be placed in cloud workspaces.
 
 ## Content
 
@@ -287,6 +290,8 @@ It does not support passwords or secret fields in `smol.json`.
 smol publish
 smol publish --out public .
 smol publish --no-build
+smol publish --sign
+smol publish --sign-key FINGERPRINT
 smol publish --dry-run
 smol publish --host example.org --user deploy --port 2222 --path /var/www/example
 ```
@@ -295,16 +300,20 @@ By default, `smol publish` performs a clean build of the local output directory,
 uploads that directory to a temporary sibling path on the remote host, then
 swaps it into place. The remote target is replaced rather than overlaid, so
 files removed from the local output disappear remotely. `--no-build` skips the
-build and publishes the existing output directory. `--unsigned` applies only to
-the build phase.
+build and publishes the existing output directory. `--sign-key` overrides
+`smol.json.sign_key` for the build phase. `--sign` chooses a key interactively
+for the build phase. `--unsigned` applies only to the build phase and wins over
+configured, CLI, and interactive signing keys.
 
 ## Signing
 
 ### Signing requirements
 
 Unsigned builds do not require `attest`, `attested-html`, `gpg`, or a private
-key. If no signing key is configured, `smol` builds normal unsigned HTML even
-when a signer happens to be installed.
+key. If no signing key is configured, supplied with `--sign-key`, or selected
+with `--sign`, `smol` builds normal unsigned HTML even when a signer and local
+GPG secret keys are available. The local keyring is inspected only when
+interactive `--sign` is requested.
 
 Signed builds require:
 
@@ -323,9 +332,10 @@ and [Windows](https://github.com/berkeleynerd/attest/blob/main/docs/setup/window
 ### Build unsigned
 
 Unsigned builds write finalized HTML to `public/` when no signing key is
-configured, or when `--unsigned` is passed. `--unsigned` wins over both
-`smol.json.sign_key` and `--sign-key`, which is useful for CI or local preview
-builds where a signing key is configured but signing should be skipped:
+configured, supplied, or selected with `--sign`, or when `--unsigned` is
+passed. `--unsigned` wins over `smol.json.sign_key`, `--sign-key`, and
+interactive signing, which is useful for CI or local preview builds where
+signing should be skipped:
 
 ```sh
 smol build
@@ -335,13 +345,15 @@ smol build --unsigned
 ### Build signed
 
 Signed builds call `attest` / `attested-html` for each generated page when
-`--sign-key` or `smol.json.sign_key` is non-empty. If a signing key is active
-but no signer can be resolved, the build fails before rendering pages:
+`--sign-key` or `smol.json.sign_key` is non-empty, or when `--sign` is used and
+a key is selected. If a signing key is active but no signer can be resolved, the
+build fails before rendering pages:
 
 Gemini capsule output does not support signing yet. If `flat-gemini-v1` is
 configured with a signing key, the build fails unless `--unsigned` is passed.
 
 ```sh
+smol build --sign
 smol build --sign-key FINGERPRINT
 smol build --sign-key FINGERPRINT --attest /path/to/attested-html
 ```
