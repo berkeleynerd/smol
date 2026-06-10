@@ -10,29 +10,23 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse vitae justo
 
 ## Sample Details {#sample-details}
 
-<p>Lorem ipsum <i>dolor</i> sit amet, consectetur adipiscing elit. Donec finibus, nibh in lacinia congue, erat lacus ultricies neque, sed tincidunt mi dolor vitae ipsum.</p>
+Lorem ipsum *dolor* sit amet, consectetur adipiscing elit. Donec finibus, nibh in lacinia congue, erat lacus ultricies neque, sed tincidunt mi dolor vitae ipsum.
 
-<blockquote>
-  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae lectus at magna pretium laoreet.</p>
-</blockquote>
+> Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae lectus at magna pretium laoreet.
 
 ## Sample List {#sample-list}
 
-<ol>
-  <li>Lorem ipsum dolor sit amet.</li>
-  <li>Consectetur adipiscing elit.</li>
-  <li>Integer vitae lectus at magna pretium laoreet.</li>
-</ol>
+1. Lorem ipsum dolor sit amet.
+2. Consectetur adipiscing elit.
+3. Integer vitae lectus at magna pretium laoreet.
 
 ## Sample Notes {#sample-notes}
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas.[^3]
 
-<ul>
-  <li>Use blank lines to separate paragraphs.</li>
-  <li>Use raw XHTML blocks for explicit structures.</li>
-  <li>Use numeric notes for compact annotations.</li>
-</ul>
+- Use blank lines to separate paragraphs.
+- Use pure Markdown structures for lists and quotes.
+- Use numeric notes for compact annotations.
 
 ## Sample Summary {#sample-summary}
 
@@ -40,7 +34,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean euismod, justo a
 
 ## Sample Afterword {#sample-afterword}
 
-<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed finibus, nibh in lacinia congue, erat lacus ultricies neque, sed tincidunt mi dolor vitae ipsum.</p>
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed finibus, nibh in lacinia congue, erat lacus ultricies neque, sed tincidunt mi dolor vitae ipsum.
 
 [^1]: Lorem ipsum dolor sit amet, consectetur adipiscing elit.
 [^2]: Integer vitae lectus at magna pretium laoreet.

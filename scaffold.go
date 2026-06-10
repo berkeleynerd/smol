@@ -483,13 +483,11 @@ func classicXHTMLPageTemplate() string {
 func classicIndexMarkdown() string {
 	return `This starter demonstrates the flat XHTML publishing path in smol. The pages are written as constrained Markdown and rendered as old-school single-file XHTML.
 
-<ul>
-  <li><a href="about.html">About this starter</a></li>
-  <li><a href="sample.html">Sample page</a></li>
-</ul>
+- [About this starter](about.html)
+- [Sample page](sample.html)
 
-1. Numbered Markdown now renders as an ordered list.
-2. Use raw XHTML only when you need exact markup.
+1. Numbered Markdown renders as an ordered list.
+2. Markdown bodies are pure Markdown; use an ` + "`.html`" + ` body when you need exact markup.
 `
 }
 
@@ -498,9 +496,7 @@ func classicAboutMarkdown() string {
 
 This site uses the classic-xhtml theme, flat filenames, inline CSS, and Markdown bodies. It is meant to show the ordinary publish flow without requiring signing setup.
 
-<blockquote>
-  <p>Raw XHTML blocks pass through unchanged, so the author controls exact markup when the narrow Markdown dialect is not enough.</p>
-</blockquote>
+> Markdown bodies stay pure Markdown. When the narrow dialect is not enough, author the page as an ` + "`.html`" + ` body instead.
 
 Footnote rendering exists in the markdown-xhtml-v1 dialect, but this starter stylesheet intentionally leaves out the checkbox note controls.
 `
@@ -529,9 +525,7 @@ func classicSampleMarkdown() string {
 		"Signing remains the final build step.\n" +
 		"```\n\n" +
 		"---\n\n" +
-		"<section>\n" +
-		"  <p>Raw XHTML block passthrough remains available for explicit publisher-controlled markup.</p>\n" +
-		"</section>\n\n" +
+		"Markdown bodies are pure Markdown; pages that need exact markup use an `.html` body instead.\n\n" +
 		"[^1]: Footnotes are rendered inline in this constrained dialect.\n"
 }
 

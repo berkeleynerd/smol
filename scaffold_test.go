@@ -92,7 +92,7 @@ func TestInitClassicXHTMLCreatesExpectedStructure(t *testing.T) {
 		t.Fatalf("classic CSS retained footnote controls:\n%s", css)
 	}
 	_, sampleBody := readContentSource(t, filepath.Join(dir, "content", "pages", "sample", "index.md"))
-	for _, want := range []string{"Markdown Capability Sample", "![Embedded sample image]", "| Source | HTML output | Gemini output |", "- [x] Static task item", "```text", "<section>"} {
+	for _, want := range []string{"Markdown Capability Sample", "![Embedded sample image]", "| Source | HTML output | Gemini output |", "- [x] Static task item", "```text", "pure Markdown"} {
 		if !strings.Contains(sampleBody, want) {
 			t.Fatalf("sample demo missing %q:\n%s", want, sampleBody)
 		}

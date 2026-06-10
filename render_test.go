@@ -287,7 +287,7 @@ func TestClassicXHTMLStarterBuildsFlatPages(t *testing.T) {
 		`<table>`,
 		`<pre><code>No scripts.`,
 		`<hr />`,
-		`<section>`,
+		`<h2 id="sample-section">`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("sample output missing %q:\n%s", want, html)
