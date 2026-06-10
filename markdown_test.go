@@ -7,26 +7,35 @@ import (
 )
 
 func TestMarkdownXHTMLEscapesTextAndRendersFootnotes(t *testing.T) {
-	got, err := RenderMarkdownXHTML("1. Keep <this> & that.[^26]\n\n[^26]: Note keeps <tag> & value.")
+	got, err := RenderMarkdownXHTML("1. Keep < 3 & that.[^26]\n\n[^26]: Note keeps < 9 & value.")
 	if err != nil {
 		t.Fatalf("RenderMarkdownXHTML: %v", err)
 	}
 	want := `<ol>
-<li>Keep &lt;this&gt; &amp; that.<span><input type="checkbox" id="cb26" /><label for="cb26"><sup>26</sup></label><span>Note keeps &lt;tag&gt; &amp; value.</span></span></li>
+<li>Keep &lt; 3 &amp; that.<span><input type="checkbox" id="cb26" /><label for="cb26"><sup>26</sup></label><span>Note keeps &lt; 9 &amp; value.</span></span></li>
 </ol>`
 	if got != want {
 		t.Fatalf("rendered markdown =\n%s\nwant\n%s", got, want)
 	}
 }
 
-func TestMarkdownXHTMLRawBlockFootnotes(t *testing.T) {
-	got, err := RenderMarkdownXHTML("<p>Text.[^1]</p>\n\n[^1]: Raw note.")
-	if err != nil {
-		t.Fatalf("RenderMarkdownXHTML: %v", err)
+func TestMarkdownXHTMLRejectsRawBlockHTML(t *testing.T) {
+	tests := map[string]string{
+		"paragraph block": "<p>Text.</p>",
+		"list block":      "<ol>\n  <li><i>Lorem ipsum dolor sit amet.</i></li>\n</ol>",
+		"svg block":       "<svg role=\"img\">\n  <title>Clean</title>\n</svg>",
+		"closing tag":     "</div>",
+		"comment":         "<!-- note -->",
+		"custom element":  "<custom-x>widget</custom-x>",
+		"inside quote":    "> <p>Quoted raw block.</p>",
 	}
-	want := `<p>Text.<span><input type="checkbox" id="cb1" /><label for="cb1"><sup>1</sup></label><span>Raw note.</span></span></p>`
-	if got != want {
-		t.Fatalf("rendered markdown =\n%s\nwant\n%s", got, want)
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := RenderMarkdownXHTML(input)
+			if err == nil || !strings.Contains(err.Error(), "raw HTML is not supported in markdown bodies") {
+				t.Fatalf("RenderMarkdownXHTML error = %v, want raw HTML rejection", err)
+			}
+		})
 	}
 }
 
@@ -113,26 +122,50 @@ func TestMarkdownXHTMLImageResolver(t *testing.T) {
 	}
 }
 
-func TestMarkdownXHTMLRawBlocksPassThrough(t *testing.T) {
-	input := `<ol>
-  <li><i>Lorem ipsum dolor sit amet.</i></li>
-</ol>
+func TestMarkdownXHTMLRejectsInlineHTML(t *testing.T) {
+	tests := map[string]string{
+		"inline element": "Hello <b>world</b>.",
+		"closing tag":    "Stray </x in text.",
+		"comment":        "Before <!-- hidden --> after.",
+		"footnote body":  "Text.[^1]\n\n[^1]: Note with <b>bold</b>.",
+	}
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := RenderMarkdownXHTML(input)
+			if err == nil || !strings.Contains(err.Error(), "inline HTML is not supported in markdown bodies") {
+				t.Fatalf("RenderMarkdownXHTML error = %v, want inline HTML rejection", err)
+			}
+		})
+	}
+}
 
-<svg role="img">
-  <title>Clean</title>
-</svg>`
-	got, err := RenderMarkdownXHTML(input)
+func TestMarkdownXHTMLKeepsBenignAngleBrackets(t *testing.T) {
+	got, err := RenderMarkdownXHTML("a < b, <3, <?, and a trailing <\n\nCode span `<div>` stays legal.\n\n```\n<div>fenced</div>\n```")
 	if err != nil {
 		t.Fatalf("RenderMarkdownXHTML: %v", err)
 	}
-	want := `<ol>
-  <li><i>Lorem ipsum dolor sit amet.</i></li>
-</ol>
-<svg role="img">
-  <title>Clean</title>
-</svg>`
-	if got != want {
-		t.Fatalf("raw blocks changed:\n%s", got)
+	for _, want := range []string{
+		"a &lt; b, &lt;3, &lt;?, and a trailing &lt;",
+		"<code>&lt;div&gt;</code>",
+		"<pre><code>&lt;div&gt;fenced&lt;/div&gt;</code></pre>",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("rendered markdown missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestMarkdownGemtextRejectsInlineHTML(t *testing.T) {
+	for name, input := range map[string]string{
+		"inline element": "Hello <b>world</b>.",
+		"raw block":      "<section>\n  <p>Raw text.</p>\n</section>",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := RenderMarkdownGemtext(input)
+			if err == nil || !strings.Contains(err.Error(), "HTML is not supported in markdown bodies") {
+				t.Fatalf("RenderMarkdownGemtext error = %v, want HTML rejection", err)
+			}
+		})
 	}
 }
 
@@ -241,10 +274,6 @@ if x < y {
 
 ---
 
-<section>
-  <p>Raw <em>XHTML</em> text.</p>
-</section>
-
 [^1]: Footnote *body*.`
 	got, err := RenderMarkdownGemtext(input)
 	if err != nil {
@@ -267,7 +296,6 @@ if x < y {
 		"| Moon   | Growth |",
 		"```\n\n```\nif x < y {\n  return x & y\n}\n```",
 		"---",
-		"Raw XHTML text.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("rendered gemtext missing %q:\n%s", want, got)

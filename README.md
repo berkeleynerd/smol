@@ -245,8 +245,15 @@ constrained Markdown/XHTML dialect, not full CommonMark or GFM. Normal text is
 HTML-escaped. Supported Markdown includes paragraphs, ATX headings, Setext
 headings, inline links, local embedded images, emphasis, strong text, inline
 code, ordered lists, unordered lists, static task-list items, blockquotes,
-simple pipe tables, fenced code blocks, horizontal rules, raw allowlisted XHTML
-blocks, and literal numeric inline notes.
+simple pipe tables, fenced code blocks, horizontal rules, and literal numeric
+inline notes.
+
+Raw HTML is not supported in markdown bodies. Block and inline HTML tags,
+closing tags, and comments are rejected with a build error; use the `.html`
+body format for full-HTML authoring, or a code span for literal tag text.
+Autolink syntax (`<https://example.org>`) is likewise rejected; write
+`[label](https://example.org)` instead. A `<` followed by a space, digit, or
+punctuation is ordinary text.
 
 Task-list items render as static list text with checkbox glyphs, not form
 controls or JavaScript. Markdown links may use relative URLs, fragments,
@@ -288,8 +295,8 @@ and fenced preformatted blocks.
 
 Markdown-to-Gemini conversion preserves document shape where Gemtext has a
 matching concept: headings, paragraphs, links, lists, task-list text,
-blockquotes, tables as preformatted blocks, fenced code blocks, horizontal
-rules, and raw XHTML text extraction from valid allowlisted XML fragments.
+blockquotes, tables as preformatted blocks, fenced code blocks, and horizontal
+rules.
 Emphasis, strong text, inline code, and footnote markup are stripped to readable
 plain text. Markdown images are rejected for `flat-gemini-v1`; binary image
 asset copying into capsules is intentionally not implemented.

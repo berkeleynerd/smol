@@ -1,11 +1,9 @@
 package main
 
 import (
-	"encoding/xml"
 	"fmt"
 	"html"
 	"html/template"
-	"io"
 	"net/url"
 	"regexp"
 	"strings"
@@ -54,7 +52,6 @@ var (
 	rawFootnoteRefRE     = regexp.MustCompile(`\[\^([0-9]+)\]`)
 	atxHeadingRE         = regexp.MustCompile(`^(#{1,6})[ \t]+(.+?)\s*$`)
 	headingIDRE          = regexp.MustCompile(`^(.*?)[ \t]+\{#([A-Za-z0-9][A-Za-z0-9_-]*)\}$`)
-	rawBlockRE           = regexp.MustCompile(`(?is)^<(p|ol|ul|blockquote|svg|div|table|pre|hr|br|section|article|header|main|footer|h[1-6])(\s|>|/)`)
 	setextHeadingRE      = regexp.MustCompile(`^[ \t]*(=+|-+)[ \t]*$`)
 	tableSeparatorCellRE = regexp.MustCompile(`^:?-{3,}:?$`)
 )
@@ -125,15 +122,8 @@ func renderMarkdownBlocks(lines []string, state *markdownRenderState) (string, e
 			continue
 		}
 
-		if rawBlockRE.MatchString(strings.TrimLeft(lines[i], " \t")) {
-			block, next := collectUntilBlank(lines, i)
-			rendered, err := spliceRawFootnotes(strings.Join(block, "\n"), state)
-			if err != nil {
-				return "", err
-			}
-			out = append(out, rendered)
-			i = next
-			continue
+		if isRawHTMLLine(lines[i]) {
+			return "", fmt.Errorf("raw HTML is not supported in markdown bodies: <%s>", rawHTMLTagToken(lines[i]))
 		}
 
 		if rendered, ok, err := renderATXHeading(lines[i], state); ok || err != nil {
@@ -258,17 +248,8 @@ func renderMarkdownGemtextBlocks(lines []string, state *markdownRenderState) (st
 			continue
 		}
 
-		if rawBlockRE.MatchString(strings.TrimLeft(lines[i], " \t")) {
-			block, next := collectUntilBlank(lines, i)
-			text, err := rawXHTMLText(strings.Join(block, "\n"))
-			if err != nil {
-				return "", err
-			}
-			if text != "" {
-				out = append(out, text)
-			}
-			i = next
-			continue
+		if isRawHTMLLine(lines[i]) {
+			return "", fmt.Errorf("raw HTML is not supported in markdown bodies: <%s>", rawHTMLTagToken(lines[i]))
 		}
 
 		if rendered, ok, err := renderMarkdownGemtextATXHeading(lines[i], state); ok || err != nil {
@@ -565,6 +546,9 @@ func renderMarkdownGemtextInline(text string, state *markdownRenderState) (strin
 				continue
 			}
 		}
+		if text[i] == '<' && isInlineHTMLStart(text, i) {
+			return "", nil, fmt.Errorf("inline HTML is not supported in markdown bodies; use a code span for literal tags")
+		}
 		next := nextSpecialInlineByte(text, i+1)
 		out.WriteString(text[i:next])
 		i = next
@@ -668,86 +652,6 @@ func normalizeGemtextText(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
 
-func rawXHTMLText(value string) (string, error) {
-	decoder := xml.NewDecoder(strings.NewReader("<root>" + value + "</root>"))
-	var out strings.Builder
-	for {
-		token, err := decoder.Token()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return "", fmt.Errorf("malformed raw XHTML block: %w", err)
-		}
-		switch t := token.(type) {
-		case xml.StartElement:
-			name := strings.ToLower(t.Name.Local)
-			if name == "root" {
-				continue
-			}
-			if !isMarkdownRawTextElement(name) {
-				return "", fmt.Errorf("unsupported raw XHTML element for Gemini output: %s", name)
-			}
-			if startsRawTextBoundary(name) {
-				writeRawTextBoundary(&out)
-			}
-		case xml.EndElement:
-			name := strings.ToLower(t.Name.Local)
-			if name != "root" && endsRawTextBoundary(name) {
-				writeRawTextBoundary(&out)
-			}
-		case xml.CharData:
-			out.WriteString(string(t))
-		}
-	}
-	lines := []string{}
-	for _, line := range strings.Split(out.String(), "\n") {
-		line = normalizeGemtextText(line)
-		if line != "" {
-			lines = append(lines, line)
-		}
-	}
-	return strings.Join(lines, "\n"), nil
-}
-
-func isMarkdownRawTextElement(name string) bool {
-	switch name {
-	case "p", "ol", "ul", "li", "blockquote", "svg", "title", "div", "table", "thead", "tbody", "tr", "td", "th", "pre", "hr", "br", "section", "article", "header", "main", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "a", "span", "strong", "b", "em", "i", "code", "sup", "sub", "label", "input":
-		return true
-	default:
-		return false
-	}
-}
-
-func startsRawTextBoundary(name string) bool {
-	switch name {
-	case "p", "li", "blockquote", "div", "table", "tr", "pre", "hr", "br", "section", "article", "header", "main", "footer", "h1", "h2", "h3", "h4", "h5", "h6":
-		return true
-	default:
-		return false
-	}
-}
-
-func endsRawTextBoundary(name string) bool {
-	switch name {
-	case "p", "li", "blockquote", "div", "table", "tr", "pre", "hr", "br", "section", "article", "header", "main", "footer", "h1", "h2", "h3", "h4", "h5", "h6":
-		return true
-	default:
-		return false
-	}
-}
-
-func writeRawTextBoundary(out *strings.Builder) {
-	if out.Len() == 0 {
-		return
-	}
-	text := out.String()
-	if strings.HasSuffix(text, "\n") {
-		return
-	}
-	out.WriteByte('\n')
-}
-
 func renderATXHeading(line string, state *markdownRenderState) (string, bool, error) {
 	match := atxHeadingRE.FindStringSubmatch(line)
 	if match == nil {
@@ -823,6 +727,39 @@ func setextHeadingLevel(line string) (int, bool) {
 		return 1, true
 	}
 	return 2, true
+}
+
+func isRawHTMLLine(line string) bool {
+	trimmed := strings.TrimLeft(line, " \t")
+	if len(trimmed) < 2 || trimmed[0] != '<' {
+		return false
+	}
+	return trimmed[1] == '/' || trimmed[1] == '!' || isASCIILetter(trimmed[1])
+}
+
+func rawHTMLTagToken(line string) string {
+	trimmed := strings.TrimLeft(line, " \t")
+	end := 1
+	for end < len(trimmed) && end < 24 {
+		ch := trimmed[end]
+		if ch == ' ' || ch == '\t' || ch == '>' {
+			break
+		}
+		end++
+	}
+	return trimmed[1:end]
+}
+
+func isInlineHTMLStart(text string, i int) bool {
+	if i+1 >= len(text) {
+		return false
+	}
+	next := text[i+1]
+	return next == '/' || next == '!' || isASCIILetter(next)
+}
+
+func isASCIILetter(value byte) bool {
+	return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z')
 }
 
 func fencedCodeMarker(line string) (string, bool) {
@@ -1085,7 +1022,7 @@ func isMarkdownBlockStart(lines []string, i int) bool {
 	if _, ok := fencedCodeMarker(lines[i]); ok {
 		return true
 	}
-	if rawBlockRE.MatchString(strings.TrimLeft(lines[i], " \t")) {
+	if isRawHTMLLine(lines[i]) {
 		return true
 	}
 	if atxHeadingRE.MatchString(lines[i]) || isHorizontalRule(lines[i]) || isBlockquoteLine(lines[i]) {
@@ -1098,16 +1035,6 @@ func isMarkdownBlockStart(lines []string, i int) bool {
 		return true
 	}
 	return false
-}
-
-func collectUntilBlank(lines []string, start int) ([]string, int) {
-	block := []string{}
-	i := start
-	for i < len(lines) && strings.TrimSpace(lines[i]) != "" {
-		block = append(block, lines[i])
-		i++
-	}
-	return block, i
 }
 
 func renderInline(text string, state *markdownRenderState) (string, error) {
@@ -1191,6 +1118,9 @@ func renderInlineWithOptions(text string, state *markdownRenderState, opts inlin
 				i = next
 				continue
 			}
+		}
+		if text[i] == '<' && isInlineHTMLStart(text, i) {
+			return "", fmt.Errorf("inline HTML is not supported in markdown bodies; use a code span for literal tags")
 		}
 		next := nextSpecialInlineByte(text, i+1)
 		out.WriteString(html.EscapeString(text[i:next]))
@@ -1285,29 +1215,6 @@ func renderFootnoteRef(text string, start int, state *markdownRenderState) (stri
 		return "", start, false, err
 	}
 	return `<span><input type="checkbox" id="cb` + n + `" /><label for="cb` + n + `"><sup>` + n + `</sup></label><span>` + rendered + `</span></span>`, start + len(match[0]), true, nil
-}
-
-func spliceRawFootnotes(text string, state *markdownRenderState) (string, error) {
-	var err error
-	rendered := rawFootnoteRefRE.ReplaceAllStringFunc(text, func(match string) string {
-		if err != nil {
-			return match
-		}
-		n := rawFootnoteRefRE.FindStringSubmatch(match)[1]
-		body, ok := state.defs[n]
-		if !ok {
-			err = fmt.Errorf("missing footnote definition: %s", n)
-			return match
-		}
-		state.used[n] = true
-		renderedBody, renderErr := renderInlineWithOptions(body, state, inlineOptions{links: true, images: false, footnotes: false})
-		if renderErr != nil {
-			err = renderErr
-			return match
-		}
-		return `<span><input type="checkbox" id="cb` + n + `" /><label for="cb` + n + `"><sup>` + n + `</sup></label><span>` + renderedBody + `</span></span>`
-	})
-	return rendered, err
 }
 
 func parseDestinationAndTitle(value string) (string, string, error) {
@@ -1438,7 +1345,7 @@ func nextSpecialInlineByte(text string, start int) int {
 
 func isSpecialInlineByte(value byte) bool {
 	switch value {
-	case '\\', '`', '*', '_', '[', '!':
+	case '\\', '`', '*', '_', '[', '!', '<':
 		return true
 	default:
 		return false

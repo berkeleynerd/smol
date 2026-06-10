@@ -211,6 +211,15 @@
     "error_substring": "JavaScript is not supported"
   },
   {
+    "name": "html-in-markdown-body",
+    "output_mode": "",
+    "action": "build",
+    "expect": "fail",
+    "starter": "default",
+    "fixture": "invalid/html-in-markdown-body",
+    "error_substring": "raw HTML is not supported in markdown bodies"
+  },
+  {
     "name": "javascript-in-chrome",
     "output_mode": "",
     "action": "build",
