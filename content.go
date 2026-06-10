@@ -20,6 +20,7 @@ type ContentMeta struct {
 	UpdatedUTC   string        `json:"updated_utc"`
 	Tags         []string      `json:"tags"`
 	Draft        bool          `json:"draft"`
+	TOC          bool          `json:"toc"`
 	Header       []HeaderEntry `json:"header"`
 	TOCColumns   [][]TOCItem   `json:"toc_columns"`
 	MainSpacer   bool          `json:"main_spacer"`
@@ -34,6 +35,11 @@ type HeaderEntry struct {
 type TOCItem struct {
 	Href string        `json:"href"`
 	HTML template.HTML `json:"html"`
+}
+
+type TOCEntry struct {
+	Href string
+	Text template.HTML
 }
 
 type PageLinks struct {
@@ -59,11 +65,13 @@ type Page struct {
 	Header       []HeaderEntry
 	TOCColumns   [][]TOCItem
 	MainSpacer   bool
+	TOC          []TOCEntry
 	Links        PageLinks
 	Navigation   PageNavigation
 	contentDir   string
 	bodyPath     string
 	body         []byte
+	tocRequested bool
 }
 
 const (
@@ -226,6 +234,7 @@ func loadContentSource(site SiteConfig, kind, slug, sourcePath, contentDir strin
 		contentDir:   contentDir,
 		bodyPath:     sourcePath,
 		body:         body,
+		tocRequested: meta.TOC,
 	}, nil
 }
 
@@ -251,6 +260,12 @@ func validateContentMeta(meta ContentMeta, expectedKind, slug, bodyFormat, outpu
 	}
 	if outputMode == outputModeFlatGemini && bodyFormat != bodyFormatGemtext && bodyFormat != bodyFormatMarkdownXHTML {
 		return fmt.Errorf("flat-gemini-v1 supports only markdown-xhtml-v1 or gemtext-v1 bodies")
+	}
+	if meta.TOC && outputMode == outputModeFlatGemini {
+		return fmt.Errorf("toc is not supported for flat-gemini-v1")
+	}
+	if meta.TOC && bodyFormat != bodyFormatMarkdownXHTML {
+		return fmt.Errorf("toc requires a markdown body")
 	}
 	if meta.Links != nil {
 		if err := validatePageLinks(*meta.Links); err != nil {
@@ -427,6 +442,14 @@ var frontMatterParsers = map[string]frontMatterParser{
 			return index, err
 		}
 		state.meta.Draft = v
+		return index, nil
+	},
+	"toc": func(state *frontMatterParseState, _ []frontMatterLine, index int, value string) (int, error) {
+		v, err := parseStrictBool("toc", value)
+		if err != nil {
+			return index, err
+		}
+		state.meta.TOC = v
 		return index, nil
 	},
 	"main_spacer": func(state *frontMatterParseState, _ []frontMatterLine, index int, value string) (int, error) {

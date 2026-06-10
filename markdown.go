@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"html"
+	"html/template"
 	"io"
 	"net/url"
 	"regexp"
@@ -14,9 +15,13 @@ import (
 type MarkdownImageResolver func(path, alt, title string) (string, error)
 
 type markdownRenderState struct {
-	defs          map[string]string
-	used          map[string]bool
-	imageResolver MarkdownImageResolver
+	defs            map[string]string
+	used            map[string]bool
+	imageResolver   MarkdownImageResolver
+	collectTOC      bool
+	blockquoteDepth int
+	tocEntries      []TOCEntry
+	tocIDs          map[string]bool
 }
 
 type inlineOptions struct {
@@ -59,6 +64,11 @@ func RenderMarkdownXHTML(input string) (string, error) {
 }
 
 func RenderMarkdownXHTMLWithImages(input string, resolver MarkdownImageResolver) (string, error) {
+	rendered, _, err := RenderMarkdownXHTMLDocument(input, resolver, false)
+	return rendered, err
+}
+
+func RenderMarkdownXHTMLDocument(input string, resolver MarkdownImageResolver, collectTOC bool) (string, []TOCEntry, error) {
 	input = strings.ReplaceAll(input, "\r\n", "\n")
 	input = strings.ReplaceAll(input, "\r", "\n")
 	defs := map[string]string{}
@@ -67,7 +77,7 @@ func RenderMarkdownXHTMLWithImages(input string, resolver MarkdownImageResolver)
 		if match := footnoteDefRE.FindStringSubmatch(line); match != nil {
 			n := match[1]
 			if _, ok := defs[n]; ok {
-				return "", fmt.Errorf("duplicate footnote definition: %s", n)
+				return "", nil, fmt.Errorf("duplicate footnote definition: %s", n)
 			}
 			defs[n] = match[2]
 			continue
@@ -79,17 +89,22 @@ func RenderMarkdownXHTMLWithImages(input string, resolver MarkdownImageResolver)
 		defs:          defs,
 		used:          map[string]bool{},
 		imageResolver: resolver,
+		collectTOC:    collectTOC,
+		tocIDs:        map[string]bool{},
 	}
 	rendered, err := renderMarkdownBlocks(contentLines, state)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	for n := range defs {
 		if !state.used[n] {
-			return "", fmt.Errorf("unused footnote definition: %s", n)
+			return "", nil, fmt.Errorf("unused footnote definition: %s", n)
 		}
 	}
-	return rendered, nil
+	if collectTOC && len(state.tocEntries) == 0 {
+		return "", nil, fmt.Errorf("toc requested but no level-2 headings found")
+	}
+	return rendered, state.tocEntries, nil
 }
 
 func renderMarkdownBlocks(lines []string, state *markdownRenderState) (string, error) {
@@ -753,10 +768,50 @@ func renderATXHeading(line string, state *markdownRenderState) (string, bool, er
 	if err != nil {
 		return "", true, err
 	}
+	if state.collectTOC && state.blockquoteDepth == 0 && level == 2 {
+		tocSource := strings.TrimSpace(rawFootnoteRefRE.ReplaceAllString(body, ""))
+		if id == "" {
+			id = slugifyHeadingID(tocSource)
+			if id == "" {
+				return "", true, fmt.Errorf("cannot derive an anchor for heading %q; add an explicit {#id}", body)
+			}
+		}
+		if state.tocIDs[id] {
+			return "", true, fmt.Errorf("duplicate heading anchor %q; add an explicit {#id} to disambiguate", id)
+		}
+		state.tocIDs[id] = true
+		tocText, err := renderInlineWithOptions(tocSource, state, inlineOptions{})
+		if err != nil {
+			return "", true, err
+		}
+		state.tocEntries = append(state.tocEntries, TOCEntry{Href: "#" + id, Text: template.HTML(tocText)})
+	}
 	if id != "" {
 		return fmt.Sprintf(`<h%d id="%s">%s</h%d>`, level, id, rendered, level), true, nil
 	}
 	return fmt.Sprintf("<h%d>%s</h%d>", level, rendered, level), true, nil
+}
+
+func slugifyHeadingID(text string) string {
+	var out strings.Builder
+	pendingHyphen := false
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+		switch {
+		case ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9':
+		case ch >= 'A' && ch <= 'Z':
+			ch += 'a' - 'A'
+		default:
+			pendingHyphen = true
+			continue
+		}
+		if pendingHyphen && out.Len() > 0 {
+			out.WriteByte('-')
+		}
+		pendingHyphen = false
+		out.WriteByte(ch)
+	}
+	return out.String()
 }
 
 func setextHeadingLevel(line string) (int, bool) {
@@ -910,7 +965,9 @@ func renderBlockquote(lines []string, start int, state *markdownRenderState) (st
 		inner = append(inner, stripped)
 		i++
 	}
+	state.blockquoteDepth++
 	rendered, err := renderMarkdownBlocks(inner, state)
+	state.blockquoteDepth--
 	if err != nil {
 		return "", start, err
 	}

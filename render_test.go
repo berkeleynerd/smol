@@ -28,7 +28,7 @@ func TestBodyHTMLRendersWithImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadContent: %v", err)
 	}
-	body, resources, err := renderPageBody(posts[0], site, siteCfg.Nav)
+	body, resources, _, err := renderPageBody(posts[0], site, siteCfg.Nav)
 	if err != nil {
 		t.Fatalf("renderPageBody: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestImageAltTextIsRequired(t *testing.T) {
 
 func TestRenderPageBodyFailsClosedWhenBodyIsMissing(t *testing.T) {
 	page := Page{Kind: "page", Slug: "index", BodyFormat: bodyFormatHTML, bodyPath: "index.html"}
-	_, _, err := renderPageBody(page, SiteView{}, nil)
+	_, _, _, err := renderPageBody(page, SiteView{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "content body was not loaded") {
 		t.Fatalf("renderPageBody error = %v, want body-not-loaded error", err)
 	}

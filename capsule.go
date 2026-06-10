@@ -41,7 +41,7 @@ func buildGeminiCapsule(siteDir string, siteCfg SiteConfig, opts BuildOptions) e
 	for _, page := range pages {
 		rendered, err := renderGeminiPage(page)
 		if err != nil {
-			return err
+			return fmt.Errorf("%s %q: %w", page.Kind, page.Slug, err)
 		}
 		tempPath := geminiOutputPathFor(tempDir, page.URL)
 		if err := atomicWriteFile(tempPath, []byte(rendered), 0o644); err != nil {

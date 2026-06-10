@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -297,5 +298,157 @@ func TestMarkdownGemtextRejectsImagesAndMalformedRawXHTML(t *testing.T) {
 				t.Fatalf("RenderMarkdownGemtext accepted %s", name)
 			}
 		})
+	}
+}
+
+func TestSlugifyHeadingID(t *testing.T) {
+	tests := map[string]string{
+		"Sample Section":     "sample-section",
+		"FAQ":                "faq",
+		"**Bold** & Friends": "bold-friends",
+		"  --x--  ":          "x",
+		"Café":               "caf",
+		"日本語":                "",
+		"A  B":               "a-b",
+		"123":                "123",
+	}
+	for input, want := range tests {
+		if got := slugifyHeadingID(input); got != want {
+			t.Fatalf("slugifyHeadingID(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestMarkdownTOCGeneration(t *testing.T) {
+	input := strings.Join([]string{
+		"## First Section",
+		"",
+		"Text.",
+		"",
+		"## Custom Title {#custom-anchor}",
+		"",
+		"More.",
+		"",
+		"## **Bold** & Friends",
+		"",
+		"End.",
+	}, "\n")
+	html, toc, err := RenderMarkdownXHTMLDocument(input, nil, true)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTMLDocument: %v", err)
+	}
+	want := []TOCEntry{
+		{Href: "#first-section", Text: "First Section"},
+		{Href: "#custom-anchor", Text: "Custom Title"},
+		{Href: "#bold-friends", Text: "<strong>Bold</strong> &amp; Friends"},
+	}
+	if !reflect.DeepEqual(toc, want) {
+		t.Fatalf("toc = %#v, want %#v", toc, want)
+	}
+	for _, marker := range []string{
+		`<h2 id="first-section">First Section</h2>`,
+		`<h2 id="custom-anchor">Custom Title</h2>`,
+		`<h2 id="bold-friends"><strong>Bold</strong> &amp; Friends</h2>`,
+	} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("output missing %q in:\n%s", marker, html)
+		}
+	}
+}
+
+func TestMarkdownTOCDisabledRendersByteIdentical(t *testing.T) {
+	input := "## First Section\n\nText.\n\n## Second Section\n\nMore.\n"
+	plain, err := RenderMarkdownXHTML(input)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTML: %v", err)
+	}
+	if strings.Contains(plain, "id=") {
+		t.Fatalf("toc-off render injected ids: %s", plain)
+	}
+	doc, toc, err := RenderMarkdownXHTMLDocument(input, nil, false)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTMLDocument: %v", err)
+	}
+	if toc != nil {
+		t.Fatalf("toc-off collected entries: %#v", toc)
+	}
+	if doc != plain {
+		t.Fatalf("toc-off output differs:\n%s\nvs\n%s", doc, plain)
+	}
+}
+
+func TestMarkdownTOCErrors(t *testing.T) {
+	tests := map[string]struct {
+		input string
+		want  string
+	}{
+		"zero level-2 headings": {
+			input: "# Title\n\nText.\n",
+			want:  "toc requested but no level-2 headings found",
+		},
+		"underivable anchor": {
+			input: "## 日本語\n\nText.\n",
+			want:  "cannot derive an anchor",
+		},
+		"duplicate auto anchors": {
+			input: "## Same\n\nText.\n\n## Same\n\nMore.\n",
+			want:  `duplicate heading anchor "same"`,
+		},
+		"auto collides with explicit": {
+			input: "## Alpha {#beta}\n\nText.\n\n## Beta\n\nMore.\n",
+			want:  `duplicate heading anchor "beta"`,
+		},
+		"explicit collides with explicit": {
+			input: "## A {#x}\n\nText.\n\n## B {#x}\n\nMore.\n",
+			want:  `duplicate heading anchor "x"`,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := RenderMarkdownXHTMLDocument(tc.input, nil, true)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("RenderMarkdownXHTMLDocument error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestMarkdownTOCSkipsFencesAndBlockquotes(t *testing.T) {
+	input := strings.Join([]string{
+		"```",
+		"## Fenced Fake",
+		"```",
+		"",
+		"> ## Quoted Heading",
+		"",
+		"## Real Section",
+		"",
+		"Text.",
+	}, "\n")
+	html, toc, err := RenderMarkdownXHTMLDocument(input, nil, true)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTMLDocument: %v", err)
+	}
+	want := []TOCEntry{{Href: "#real-section", Text: "Real Section"}}
+	if !reflect.DeepEqual(toc, want) {
+		t.Fatalf("toc = %#v, want %#v", toc, want)
+	}
+	if !strings.Contains(html, "<h2>Quoted Heading</h2>") {
+		t.Fatalf("blockquote heading gained an id: %s", html)
+	}
+}
+
+func TestMarkdownTOCStripsFootnoteRefsFromEntryText(t *testing.T) {
+	input := "## Notes[^1]\n\nText.\n\n[^1]: A note.\n"
+	html, toc, err := RenderMarkdownXHTMLDocument(input, nil, true)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTMLDocument: %v", err)
+	}
+	want := []TOCEntry{{Href: "#notes", Text: "Notes"}}
+	if !reflect.DeepEqual(toc, want) {
+		t.Fatalf("toc = %#v, want %#v", toc, want)
+	}
+	if !strings.Contains(html, `<h2 id="notes">`) {
+		t.Fatalf("heading missing id: %s", html)
 	}
 }

@@ -137,9 +137,9 @@ func BuildSite(opts BuildOptions) error {
 
 	results := []renderResult{}
 	for _, page := range append(append([]Page{}, pages...), posts...) {
-		rendered, imageResources, err := renderPageBody(page, site, siteCfg.Nav)
+		rendered, imageResources, tocEntries, err := renderPageBody(page, site, siteCfg.Nav)
 		if err != nil {
-			return err
+			return fmt.Errorf("%s %q: %w", page.Kind, page.Slug, err)
 		}
 		if err := validateNoReservedRegionMarkers(page, rendered); err != nil {
 			return err
@@ -148,6 +148,7 @@ func BuildSite(opts BuildOptions) error {
 			return err
 		}
 		page.ContentHTML = template.HTML(rendered)
+		page.TOC = tocEntries
 		resources := append([]ManifestResource{}, cssResources...)
 		resources = append(resources, imageResources...)
 		root := TemplateRoot{
@@ -288,32 +289,32 @@ func pathWithinOrSame(parent, child string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []ManifestResource, error) {
+func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []ManifestResource, []TOCEntry, error) {
 	body := page.body
 	if body == nil {
-		return "", nil, fmt.Errorf("content body was not loaded for %s %q", page.Kind, page.Slug)
+		return "", nil, nil, fmt.Errorf("content body was not loaded for %s %q", page.Kind, page.Slug)
 	}
 	if page.BodyFormat == bodyFormatMarkdownXHTML {
 		var resources []ManifestResource
-		html, err := RenderMarkdownXHTMLWithImages(string(body), func(path, alt, title string) (string, error) {
+		html, toc, err := RenderMarkdownXHTMLDocument(string(body), func(path, alt, title string) (string, error) {
 			html, resource, err := embedImageWithTitle(page, path, alt, title)
 			if err != nil {
 				return "", err
 			}
 			resources = append(resources, resource)
 			return string(html), nil
-		})
+		}, page.tocRequested)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
-		return html, resources, nil
+		return html, resources, toc, nil
 	}
 	if page.BodyFormat == bodyFormatGemtext {
 		html, err := RenderGemtextXHTML(string(body))
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
-		return html, nil, nil
+		return html, nil, nil, nil
 	}
 	var resources []ManifestResource
 	funcs := template.FuncMap{
@@ -329,7 +330,7 @@ func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []Manifest
 	}
 	tmpl, err := template.New("body").Funcs(funcs).Parse(string(body))
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	var buf bytes.Buffer
 	err = tmpl.Execute(&buf, TemplateRoot{
@@ -346,9 +347,9 @@ func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []Manifest
 		},
 	})
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	return buf.String(), resources, nil
+	return buf.String(), resources, nil, nil
 }
 
 func embedImage(page Page, path, alt string) (template.HTML, ManifestResource, error) {

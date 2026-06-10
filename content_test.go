@@ -156,6 +156,11 @@ func TestParseContentFrontMatter(t *testing.T) {
 			wantMeta: ContentMeta{Title: "Known"},
 			wantBody: "Body.\n",
 		},
+		"toc flag": {
+			input:    "---\ntoc: true\n---\nBody.\n",
+			wantMeta: ContentMeta{TOC: true},
+			wantBody: "Body.\n",
+		},
 		"json metadata": {
 			input:    "----\n",
 			wantBody: "----\n",
@@ -354,7 +359,7 @@ func TestValidatePageLinksReportsDeterministically(t *testing.T) {
 }
 
 func TestFrontMatterParserRegistryIsRecognizedKeySource(t *testing.T) {
-	for _, key := range []string{"title", "summary", "published", "published_utc", "updated", "updated_utc", "draft", "main_spacer", "tags", "links", "header", "toc_columns"} {
+	for _, key := range []string{"title", "summary", "published", "published_utc", "updated", "updated_utc", "draft", "toc", "main_spacer", "tags", "links", "header", "toc_columns"} {
 		if _, ok := frontMatterParsers[key]; !ok {
 			t.Fatalf("frontMatterParsers missing %q", key)
 		}
@@ -480,6 +485,42 @@ func TestLoadContentSourceLayoutErrors(t *testing.T) {
 			dir := t.TempDir()
 			tc.setup(dir)
 			_, _, err := LoadContent(dir, SiteConfig{BaseURL: "https://example.org"})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("LoadContent error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestTOCModeGuards(t *testing.T) {
+	tests := map[string]struct {
+		ext        string
+		body       string
+		outputMode string
+		want       string
+	}{
+		"html body": {
+			ext:  ".html",
+			body: "---\ntoc: true\n---\n<p>Body.</p>\n",
+			want: "toc requires a markdown body",
+		},
+		"gemtext body": {
+			ext:  ".gmi",
+			body: "---\ntoc: true\n---\nBody.\n",
+			want: "toc requires a markdown body",
+		},
+		"flat gemini": {
+			ext:        ".md",
+			body:       "---\ntoc: true\n---\n## Section\n",
+			outputMode: outputModeFlatGemini,
+			want:       "toc is not supported for flat-gemini-v1",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeText(t, filepath.Join(dir, "content", "pages", "about"+tc.ext), tc.body)
+			_, _, err := LoadContent(dir, SiteConfig{BaseURL: "https://example.org", OutputMode: tc.outputMode})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("LoadContent error = %v, want %q", err, tc.want)
 			}
