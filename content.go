@@ -14,27 +14,14 @@ import (
 )
 
 type ContentMeta struct {
-	Title        string        `json:"title"`
-	Summary      string        `json:"summary"`
-	PublishedUTC string        `json:"published_utc"`
-	UpdatedUTC   string        `json:"updated_utc"`
-	Tags         []string      `json:"tags"`
-	Draft        bool          `json:"draft"`
-	TOC          bool          `json:"toc"`
-	Header       []HeaderEntry `json:"header"`
-	TOCColumns   [][]TOCItem   `json:"toc_columns"`
-	MainSpacer   bool          `json:"main_spacer"`
-	Links        *PageLinks    `json:"links,omitempty"`
-}
-
-type HeaderEntry struct {
-	Level int           `json:"level"`
-	HTML  template.HTML `json:"html"`
-}
-
-type TOCItem struct {
-	Href string        `json:"href"`
-	HTML template.HTML `json:"html"`
+	Title        string     `json:"title"`
+	Summary      string     `json:"summary"`
+	PublishedUTC string     `json:"published_utc"`
+	UpdatedUTC   string     `json:"updated_utc"`
+	Tags         []string   `json:"tags"`
+	Draft        bool       `json:"draft"`
+	TOC          bool       `json:"toc"`
+	Links        *PageLinks `json:"links,omitempty"`
 }
 
 type TOCEntry struct {
@@ -62,9 +49,6 @@ type Page struct {
 	ContentHTML  template.HTML
 	Draft        bool
 	BodyFormat   string
-	Header       []HeaderEntry
-	TOCColumns   [][]TOCItem
-	MainSpacer   bool
 	TOC          []TOCEntry
 	Links        PageLinks
 	Navigation   PageNavigation
@@ -227,9 +211,6 @@ func loadContentSource(site SiteConfig, kind, slug, sourcePath, contentDir strin
 		CanonicalURL: canonicalURL(site.BaseURL, route),
 		Draft:        meta.Draft,
 		BodyFormat:   bodyFormat,
-		Header:       meta.Header,
-		TOCColumns:   meta.TOCColumns,
-		MainSpacer:   meta.MainSpacer,
 		Links:        links,
 		contentDir:   contentDir,
 		bodyPath:     sourcePath,
@@ -270,18 +251,6 @@ func validateContentMeta(meta ContentMeta, expectedKind, slug, bodyFormat, outpu
 	if meta.Links != nil {
 		if err := validatePageLinks(*meta.Links); err != nil {
 			return err
-		}
-	}
-	for _, entry := range meta.Header {
-		if entry.Level < 1 || entry.Level > 6 {
-			return fmt.Errorf("invalid content metadata: header level must be 1 through 6")
-		}
-	}
-	for _, column := range meta.TOCColumns {
-		for _, item := range column {
-			if item.Href == "" {
-				return fmt.Errorf("invalid content metadata: toc_columns href is required")
-			}
 		}
 	}
 	return nil
@@ -452,14 +421,6 @@ var frontMatterParsers = map[string]frontMatterParser{
 		state.meta.TOC = v
 		return index, nil
 	},
-	"main_spacer": func(state *frontMatterParseState, _ []frontMatterLine, index int, value string) (int, error) {
-		v, err := parseStrictBool("main_spacer", value)
-		if err != nil {
-			return index, err
-		}
-		state.meta.MainSpacer = v
-		return index, nil
-	},
 	"tags": func(state *frontMatterParseState, lines []frontMatterLine, index int, value string) (int, error) {
 		values, next, err := parseStringListValue(value, lines, index, lines[index].indent)
 		if err != nil {
@@ -475,22 +436,6 @@ var frontMatterParsers = map[string]frontMatterParser{
 		}
 		state.meta.Links = &links
 		return next, nil
-	},
-	"header": func(state *frontMatterParseState, _ []frontMatterLine, index int, value string) (int, error) {
-		var header []HeaderEntry
-		if err := parseCompactFrontMatterJSON("header", value, &header); err != nil {
-			return index, err
-		}
-		state.meta.Header = header
-		return index, nil
-	},
-	"toc_columns": func(state *frontMatterParseState, _ []frontMatterLine, index int, value string) (int, error) {
-		var columns [][]TOCItem
-		if err := parseCompactFrontMatterJSON("toc_columns", value, &columns); err != nil {
-			return index, err
-		}
-		state.meta.TOCColumns = columns
-		return index, nil
 	},
 }
 
@@ -830,17 +775,6 @@ func parseInlineStringList(value string) ([]string, error) {
 		values = append(values, item)
 	}
 	return values, nil
-}
-
-func parseCompactFrontMatterJSON(name, value string, out any) error {
-	value = strings.TrimSpace(value)
-	if value == "" || !strings.HasPrefix(value, "[") {
-		return fmt.Errorf("%s must be a compact single-line JSON array", name)
-	}
-	if err := json.Unmarshal([]byte(value), out); err != nil {
-		return fmt.Errorf("invalid %s JSON; %s must be a compact single-line JSON array: %w", name, name, err)
-	}
-	return nil
 }
 
 func splitInlineList(value string) ([]string, error) {

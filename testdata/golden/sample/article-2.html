@@ -152,20 +152,10 @@ input[type=checkbox]:checked ~ label {
 #toc_container li, #toc_container ul, #toc_container ul li {
   list-style: outside none none !important;
 }
-div.row {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  width: 100%;
-}
-div.column {
-  display: flex;
-  flex-direction: column;
-  flex-basis: 100%;
-}
 @media screen and (min-width: 650px) {
-  div.column {
-    flex: 1
+  #toc_container ul.toc_list {
+    column-count: 2;
+    column-gap: 2em;
   }
 }
 </style>
@@ -173,34 +163,19 @@ div.column {
 <body>
 <header>
   <h1>Article 2</h1>
-  <h4>Generic fixture text</h4>
-  <h5>Lorem ipsum dolor sit amet</h5>
   <div id="toc_container">
-    <div class="row">
-      <div class="column">
-        <p id="toc_title">Table of Contents</p>
-      </div>
-    </div>
-    <div class="row">
-      <div class="column">
-        <ul class="toc_list">
-          <li><a href="#sample-section">Sample Section</a></li>
-          <li><a href="#sample-details">Sample Details</a></li>
-          <li><a href="#sample-list">Sample List</a></li>
-        </ul>
-      </div>
-      <div class="column">
-        <ul class="toc_list">
-          <li><a href="#sample-notes">Sample Notes</a></li>
-          <li><a href="#sample-summary">Sample Summary</a></li>
-          <li><a href="#sample-afterword">Sample Afterword</a></li>
-        </ul>
-      </div>
-    </div>
+    <p id="toc_title">Table of Contents</p>
+    <ul class="toc_list">
+      <li><a href="#sample-section">Sample Section</a></li>
+      <li><a href="#sample-details">Sample Details</a></li>
+      <li><a href="#sample-list">Sample List</a></li>
+      <li><a href="#sample-notes">Sample Notes</a></li>
+      <li><a href="#sample-summary">Sample Summary</a></li>
+      <li><a href="#sample-afterword">Sample Afterword</a></li>
+    </ul>
   </div>
 </header>
 <main>
-  <p>&nbsp;</p>
   <ol>
   <li>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae lectus at magna pretium laoreet.<span><input type="checkbox" id="cb1" /><label for="cb1"><sup>1</sup></label><span>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</span></span></li>
   </ol>

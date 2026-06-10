@@ -1,6 +1,5 @@
 ---
 title: Sample Reference
-header: [{"level":1,"html":"Sample Reference"}]
 ---
 <h2>Lorem Ipsum Reference</h2>
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae lectus at magna pretium laoreet.</p>

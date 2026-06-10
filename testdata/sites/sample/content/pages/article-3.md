@@ -1,6 +1,5 @@
 ---
 title: Article 3
-header: [{"level":1,"html":"Article 3"}]
 ---
 <ul class="toc_list">
   <li><a href="article-1.html">Article 1</a></li>

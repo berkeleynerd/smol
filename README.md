@@ -185,7 +185,7 @@ grammar is:
 | Lists | Inline `[a, "b, c", 'd']` or block lists at/deeper than the key indentation. Quotes delimit inline items only when they start an item, so apostrophes inside bare items are literal. Empty inline list `[]` is valid; bare `tags:` with no items is rejected. Top-level block lists are flat. The first non-list line ends a block list. |
 | Links | `links` is a strict block map with `up`, `previous`, `next`, and `related`; those subkeys are not top-level keys and are not guarded inside unknown foreign blocks. |
 | Dates | RFC3339 timestamps are accepted unchanged. Bare `YYYY-MM-DD` dates are normalized to midnight UTC. Empty date fields are treated as omitted. Other date formats are rejected. |
-| JSON fields | `header` and `toc_columns` must be compact single-line JSON arrays. |
+| Table of contents | `toc: true` generates a table of contents from the page's level-2 Markdown headings. Anchors are auto-derived (lowercase letters and digits, other runs become single hyphens); an explicit `{#id}` overrides. Duplicate or underivable anchors are errors, as is `toc: true` with no level-2 headings, a non-Markdown body, or `flat-gemini-v1` output. |
 | Comments | Unsupported; `#` is literal text. |
 | Booleans | `true` and `false` are accepted case-insensitively. |
 
@@ -209,16 +209,21 @@ comes from the whole-page attested signature.
 See `docs/smol-static-nojs-v1.md` for the output profile contract and
 `docs/smol-attested-manifest-v1.md` for manifest fields.
 
-Advanced classic XHTML fields remain available as front matter. `header` and
-`toc_columns` use compact single-line JSON values rather than general YAML
-objects:
+A generated table of contents is opt-in per page. With `toc: true`, smol
+collects the page's level-2 Markdown headings in document order, injects the
+derived (or explicit `{#id}`) anchors into the rendered headings, and exposes
+the entries to themes as `.Page.TOC`; the classic XHTML starter renders them
+as chrome above the authored content:
 
 ```md
 ---
 title: Sample
-header: [{"level":1,"html":"Sample"}]
-toc_columns: [[{"href":"#x","html":"X"}]]
+toc: true
 ---
+
+## First Section
+
+## Custom Anchor {#custom}
 ```
 
 HTML source files use `.html` and contain an HTML fragment. They may use only

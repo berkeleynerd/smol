@@ -157,7 +157,7 @@ func TestClassicAuthoredRegionIsRenderedBodyOnly(t *testing.T) {
 	if err := InitSiteWithStarter(dir, starterClassicXHTML); err != nil {
 		t.Fatalf("InitSiteWithStarter classic-xhtml: %v", err)
 	}
-	addFieldsToContentSource(t, filepath.Join(dir, "content", "pages", "sample", "index.md"), []string{"main_spacer: true"})
+	addFieldsToContentSource(t, filepath.Join(dir, "content", "pages", "sample", "index.md"), []string{"toc: true"})
 	buildSite(t, dir)
 
 	html := readText(t, filepath.Join(dir, "public", "sample.html"))
@@ -188,9 +188,12 @@ func TestClassicAuthoredRegionIsRenderedBodyOnly(t *testing.T) {
 		t.Fatalf("RenderMarkdownXHTMLWithImages sample: %v", err)
 	}
 	assertExactRegion(t, "classic sample", html, rendered)
-	assertRegionExcludes(t, "classic sample", html, "<p>&nbsp;</p>", generatedNavigationOpen)
-	if !strings.Contains(html, "<p>&nbsp;</p>") {
-		t.Fatalf("classic sample did not render main spacer outside authored region:\n%s", html)
+	assertRegionExcludes(t, "classic sample", html, `<div id="toc_container">`, generatedNavigationOpen)
+	if !strings.Contains(html, `<div id="toc_container">`) {
+		t.Fatalf("classic sample did not render generated toc outside authored region:\n%s", html)
+	}
+	if !strings.Contains(html, `<a href="#sample-section">`) {
+		t.Fatalf("generated toc missing explicit-anchor entry:\n%s", html)
 	}
 }
 

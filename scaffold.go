@@ -457,25 +457,15 @@ func classicXHTMLPageTemplate() string {
 </head>
 <body{{if .PageNav.HasLinks}} id="top"{{end}}>
 <header>
-{{if .Page.Header}}{{range .Page.Header}}  <h{{.Level}}>{{.HTML}}</h{{.Level}}>
-{{end}}{{else}}  <h1>{{.Page.Title}}</h1>
-{{end}}{{if .Page.TOCColumns}}  <div id="toc_container">
-    <div class="row">
-      <div class="column">
-        <p id="toc_title">Table of Contents</p>
-      </div>
-    </div>
-    <div class="row">
-{{range .Page.TOCColumns}}      <div class="column">
-        <ul class="toc_list">
-{{range .}}          <li><a href="{{.Href}}">{{.HTML}}</a></li>
-{{end}}        </ul>
-      </div>
-{{end}}    </div>
+  <h1>{{.Page.Title}}</h1>
+{{if .Page.TOC}}  <div id="toc_container">
+    <p id="toc_title">Table of Contents</p>
+    <ul class="toc_list">
+{{range .Page.TOC}}      <li><a href="{{.Href}}">{{.Text}}</a></li>
+{{end}}    </ul>
   </div>
 {{end}}</header>
-{{if .Page.MainSpacer}}<p>&nbsp;</p>
-{{end}}<main id="content">{{.Smol.AuthoredContentOpen}}{{.Page.ContentHTML}}{{.Smol.AuthoredContentClose}}</main>
+<main id="content">{{.Smol.AuthoredContentOpen}}{{.Page.ContentHTML}}{{.Smol.AuthoredContentClose}}</main>
 {{if .PageNav.HasLinks}}{{with .PageNav}}<nav aria-label="Page navigation">
   {{$.Smol.GeneratedNavigationOpen}}<a href="{{.Top.Href}}" rel="{{.Top.Rel}}">{{.Top.Label}}</a>
 {{with .Home}}  <a href="{{.Href}}" rel="{{.Rel}}">{{.Label}}</a>
@@ -710,20 +700,10 @@ li.task-list-item {
 #toc_container li, #toc_container ul, #toc_container ul li {
   list-style: outside none none !important;
 }
-div.row {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  width: 100%;
-}
-div.column {
-  display: flex;
-  flex-direction: column;
-  flex-basis: 100%;
-}
 @media screen and (min-width: 650px) {
-  div.column {
-    flex: 1
+  #toc_container ul.toc_list {
+    column-count: 2;
+    column-gap: 2em;
   }
 }
 `

@@ -116,7 +116,7 @@ func TestParseContentFrontMatter(t *testing.T) {
 			wantBody: "Body.\n",
 		},
 		"case insensitive booleans": {
-			input:    "---\ndraft: True\nmain_spacer: FALSE\n---\nBody.\n",
+			input:    "---\ndraft: True\ntoc: FALSE\n---\nBody.\n",
 			wantMeta: ContentMeta{Draft: true},
 			wantBody: "Body.\n",
 		},
@@ -179,26 +179,6 @@ func TestParseContentFrontMatter(t *testing.T) {
 				t.Fatalf("meta = %#v, want %#v", meta, tc.wantMeta)
 			}
 		})
-	}
-}
-
-func TestParseContentFrontMatterJSONFields(t *testing.T) {
-	input := "---\n" +
-		`header: [{"level":1,"html":"Title"}]` + "\n" +
-		`toc_columns: [[{"href":"#x","html":"X"}]]` + "\n" +
-		"---\nBody.\n"
-	meta, body, err := parseContentFrontMatter([]byte(input), "page.md")
-	if err != nil {
-		t.Fatalf("parseContentFrontMatter: %v", err)
-	}
-	if string(body) != "Body.\n" {
-		t.Fatalf("body = %q", string(body))
-	}
-	if len(meta.Header) != 1 || meta.Header[0].Level != 1 || string(meta.Header[0].HTML) != "Title" {
-		t.Fatalf("header = %#v", meta.Header)
-	}
-	if len(meta.TOCColumns) != 1 || len(meta.TOCColumns[0]) != 1 || meta.TOCColumns[0][0].Href != "#x" || string(meta.TOCColumns[0][0].HTML) != "X" {
-		t.Fatalf("toc_columns = %#v", meta.TOCColumns)
 	}
 }
 
@@ -316,13 +296,9 @@ func TestParseContentFrontMatterErrors(t *testing.T) {
 			input: "---\ntags:\n  - a\n  - \n---\nBody.\n",
 			want:  "list items must not be empty",
 		},
-		"header block json": {
-			input: "---\nheader:\n  - level: 1\n---\nBody.\n",
-			want:  "header must be a compact single-line JSON array",
-		},
-		"toc columns empty json": {
-			input: "---\ntoc_columns:\n---\nBody.\n",
-			want:  "toc_columns must be a compact single-line JSON array",
+		"malformed toc bool": {
+			input: "---\ntoc: yes\n---\nBody.\n",
+			want:  `toc: expected true or false, got "yes"`,
 		},
 		"cr-only front matter": {
 			input: "---\rtitle: CR\r---\rBody.\r",
@@ -359,7 +335,7 @@ func TestValidatePageLinksReportsDeterministically(t *testing.T) {
 }
 
 func TestFrontMatterParserRegistryIsRecognizedKeySource(t *testing.T) {
-	for _, key := range []string{"title", "summary", "published", "published_utc", "updated", "updated_utc", "draft", "toc", "main_spacer", "tags", "links", "header", "toc_columns"} {
+	for _, key := range []string{"title", "summary", "published", "published_utc", "updated", "updated_utc", "draft", "toc", "tags", "links"} {
 		if _, ok := frontMatterParsers[key]; !ok {
 			t.Fatalf("frontMatterParsers missing %q", key)
 		}

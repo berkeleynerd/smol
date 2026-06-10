@@ -11,25 +11,16 @@
 </head>
 <body>
 <header>
-{{range .Page.Header}}  <h{{.Level}}>{{.HTML}}</h{{.Level}}>
-{{end}}{{if .Page.TOCColumns}}  <div id="toc_container">
-    <div class="row">
-      <div class="column">
-        <p id="toc_title">Table of Contents</p>
-      </div>
-    </div>
-    <div class="row">
-{{range .Page.TOCColumns}}      <div class="column">
-        <ul class="toc_list">
-{{range .}}          <li><a href="{{.Href}}">{{.HTML}}</a></li>
-{{end}}        </ul>
-      </div>
-{{end}}    </div>
+  <h1>{{.Page.Title}}</h1>
+{{if .Page.TOC}}  <div id="toc_container">
+    <p id="toc_title">Table of Contents</p>
+    <ul class="toc_list">
+{{range .Page.TOC}}      <li><a href="{{.Href}}">{{.Text}}</a></li>
+{{end}}    </ul>
   </div>
 {{end}}</header>
 <main>
-{{if .Page.MainSpacer}}  <p>&nbsp;</p>
-{{end}}{{indent .Page.ContentHTML "  "}}
+{{indent .Page.ContentHTML "  "}}
 </main>
 </body>
 </html>

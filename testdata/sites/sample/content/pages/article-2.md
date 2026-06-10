@@ -1,8 +1,6 @@
 ---
 title: Article 2
-header: [{"level":1,"html":"Article 2"},{"level":4,"html":"Generic fixture text"},{"level":5,"html":"Lorem ipsum dolor sit amet"}]
-main_spacer: true
-toc_columns: [[{"href":"#sample-section","html":"Sample Section"},{"href":"#sample-details","html":"Sample Details"},{"href":"#sample-list","html":"Sample List"}],[{"href":"#sample-notes","html":"Sample Notes"},{"href":"#sample-summary","html":"Sample Summary"},{"href":"#sample-afterword","html":"Sample Afterword"}]]
+toc: true
 ---
 1. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae lectus at magna pretium laoreet.[^1]
 

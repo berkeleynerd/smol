@@ -1,6 +1,5 @@
 ---
 title: Article 1
-header: [{"level":1,"html":"Article 1"},{"level":2,"html":"Lorem ipsum dolor sit amet,<br />\nconsectetur adipiscing elit"},{"level":4,"html":"Generic sample byline"},{"level":5,"html":"Sample Author"}]
 ---
 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae lectus at magna pretium laoreet.</p>
 
