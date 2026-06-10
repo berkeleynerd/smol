@@ -140,12 +140,12 @@ func TestMarkdownXHTMLRejectsInlineHTML(t *testing.T) {
 }
 
 func TestMarkdownXHTMLKeepsBenignAngleBrackets(t *testing.T) {
-	got, err := RenderMarkdownXHTML("a < b, <3, <?, and a trailing <\n\nCode span `<div>` stays legal.\n\n```\n<div>fenced</div>\n```")
+	got, err := RenderMarkdownXHTML("a < b, <3, </3, <!?, <?, and a trailing <\n\nCode span `<div>` stays legal.\n\n```\n<div>fenced</div>\n```")
 	if err != nil {
 		t.Fatalf("RenderMarkdownXHTML: %v", err)
 	}
 	for _, want := range []string{
-		"a &lt; b, &lt;3, &lt;?, and a trailing &lt;",
+		"a &lt; b, &lt;3, &lt;/3, &lt;!?, &lt;?, and a trailing &lt;",
 		"<code>&lt;div&gt;</code>",
 		"<pre><code>&lt;div&gt;fenced&lt;/div&gt;</code></pre>",
 	} {
@@ -478,5 +478,90 @@ func TestMarkdownTOCStripsFootnoteRefsFromEntryText(t *testing.T) {
 	}
 	if !strings.Contains(html, `<h2 id="notes">`) {
 		t.Fatalf("heading missing id: %s", html)
+	}
+}
+
+func TestMarkdownTOCCollectsSetextHeadings(t *testing.T) {
+	input := "Setext Two\n----------\n\nText.\n\n## ATX Section {#atx}\n\nMore.\n"
+	html, toc, err := RenderMarkdownXHTMLDocument(input, nil, true)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTMLDocument: %v", err)
+	}
+	want := []TOCEntry{
+		{Href: "#setext-two", Text: "Setext Two"},
+		{Href: "#atx", Text: "ATX Section"},
+	}
+	if !reflect.DeepEqual(toc, want) {
+		t.Fatalf("toc = %#v, want %#v", toc, want)
+	}
+	if !strings.Contains(html, `<h2 id="setext-two">Setext Two</h2>`) {
+		t.Fatalf("setext heading missing anchor: %s", html)
+	}
+	plain, err := RenderMarkdownXHTML(input)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTML: %v", err)
+	}
+	if !strings.Contains(plain, "<h2>Setext Two</h2>") {
+		t.Fatalf("toc-off setext heading changed: %s", plain)
+	}
+}
+
+func TestMarkdownTOCStripsLinkAndImageMarkupFromEntries(t *testing.T) {
+	input := "## See [docs](a.html) now\n\nText.\n\n## Shot ![tiny icon](pic.png) list\n\nMore.\n"
+	html, toc, err := RenderMarkdownXHTMLDocument(input, func(path, alt, title string) (string, error) {
+		return `<img src="data:image/png;base64,AA==" alt="` + alt + `">`, nil
+	}, true)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTMLDocument: %v", err)
+	}
+	want := []TOCEntry{
+		{Href: "#see-docs-now", Text: "See docs now"},
+		{Href: "#shot-tiny-icon-list", Text: "Shot tiny icon list"},
+	}
+	if !reflect.DeepEqual(toc, want) {
+		t.Fatalf("toc = %#v, want %#v", toc, want)
+	}
+	if !strings.Contains(html, `<h2 id="see-docs-now">See <a href="a.html">docs</a> now</h2>`) {
+		t.Fatalf("heading lost its rendered link: %s", html)
+	}
+}
+
+func TestMarkdownTOCRejectsDuplicateAnchorsAcrossHeadingLevels(t *testing.T) {
+	tests := map[string]struct {
+		input string
+		want  string
+	}{
+		"explicit h3 collides with auto h2": {
+			input: "### Old {#notes}\n\nText.\n\n## Notes\n\nMore.\n",
+			want:  `duplicate heading anchor "notes"`,
+		},
+		"blockquoted explicit collides": {
+			input: "> ## Quoted {#x}\n\n## Top {#x}\n\nMore.\n",
+			want:  `duplicate heading anchor "x"`,
+		},
+		"footnote checkbox namespace": {
+			input: "## Cb1\n\nText.[^1]\n\n[^1]: A note.\n",
+			want:  `collides with footnote checkbox ids`,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := RenderMarkdownXHTMLDocument(tc.input, nil, true)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("RenderMarkdownXHTMLDocument error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestMarkdownTOCFootnoteStripDoesNotJoinAdjacentText(t *testing.T) {
+	input := "## a <[^1]b\n\nText.[^1]\n\n[^1]: A note.\n"
+	_, toc, err := RenderMarkdownXHTMLDocument(input, nil, true)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTMLDocument: %v", err)
+	}
+	want := []TOCEntry{{Href: "#a-b", Text: "a &lt; b"}}
+	if !reflect.DeepEqual(toc, want) {
+		t.Fatalf("toc = %#v, want %#v", toc, want)
 	}
 }

@@ -185,7 +185,7 @@ grammar is:
 | Lists | Inline `[a, "b, c", 'd']` or block lists at/deeper than the key indentation. Quotes delimit inline items only when they start an item, so apostrophes inside bare items are literal. Empty inline list `[]` is valid; bare `tags:` with no items is rejected. Top-level block lists are flat. The first non-list line ends a block list. |
 | Links | `links` is a strict block map with `up`, `previous`, `next`, and `related`; those subkeys are not top-level keys and are not guarded inside unknown foreign blocks. |
 | Dates | RFC3339 timestamps are accepted unchanged. Bare `YYYY-MM-DD` dates are normalized to midnight UTC. Empty date fields are treated as omitted. Other date formats are rejected. |
-| Table of contents | `toc: true` generates a table of contents from the page's level-2 Markdown headings. Anchors are auto-derived (lowercase letters and digits, other runs become single hyphens); an explicit `{#id}` overrides. Duplicate or underivable anchors are errors, as is `toc: true` with no level-2 headings, a non-Markdown body, or `flat-gemini-v1` output. |
+| Table of contents | `toc: true` generates a table of contents from the page's level-2 Markdown headings, ATX or setext. Anchors are auto-derived (lowercase letters and digits, other runs become single hyphens; non-ASCII characters are dropped); an explicit `{#id}` on an ATX heading overrides. Link and image markup in a collected heading contributes only its label to the entry text and anchor. With `toc: true` every heading anchor on the page must be unique and must not collide with footnote checkbox ids. Duplicate or underivable anchors are errors, as is `toc: true` with no level-2 headings, a non-Markdown body, or `flat-gemini-v1` output. |
 | Comments | Unsupported; `#` is literal text. |
 | Booleans | `true` and `false` are accepted case-insensitively. |
 
@@ -210,10 +210,10 @@ See `docs/smol-static-nojs-v1.md` for the output profile contract and
 `docs/smol-attested-manifest-v1.md` for manifest fields.
 
 A generated table of contents is opt-in per page. With `toc: true`, smol
-collects the page's level-2 Markdown headings in document order, injects the
-derived (or explicit `{#id}`) anchors into the rendered headings, and exposes
-the entries to themes as `.Page.TOC`; the classic XHTML starter renders them
-as chrome above the authored content:
+collects the page's level-2 Markdown headings (ATX or setext) in document
+order, injects the derived (or explicit `{#id}`) anchors into the rendered
+headings, and exposes the entries to themes as `.Page.TOC`; the classic XHTML
+starter renders them as chrome above the authored content:
 
 ```md
 ---
@@ -252,8 +252,11 @@ Raw HTML is not supported in markdown bodies. Block and inline HTML tags,
 closing tags, and comments are rejected with a build error; use the `.html`
 body format for full-HTML authoring, or a code span for literal tag text.
 Autolink syntax (`<https://example.org>`) is likewise rejected; write
-`[label](https://example.org)` instead. A `<` followed by a space, digit, or
-punctuation is ordinary text.
+`[label](https://example.org)` instead. A `<` is rejected only when it reads
+as HTML: `<` or `</` followed by a letter, or `<!` beginning a comment or
+declaration. Anything else — `a < b`, `1<2`, `</3`, `<!?`, a trailing `<` —
+is ordinary text, but `a<b` is rejected because `<b` reads as a tag; write
+`a < b` or use a code span.
 
 Task-list items render as static list text with checkbox glyphs, not form
 controls or JavaScript. Markdown links may use relative URLs, fragments,

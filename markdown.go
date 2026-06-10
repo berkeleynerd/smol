@@ -52,6 +52,8 @@ var (
 	rawFootnoteRefRE     = regexp.MustCompile(`\[\^([0-9]+)\]`)
 	atxHeadingRE         = regexp.MustCompile(`^(#{1,6})[ \t]+(.+?)\s*$`)
 	headingIDRE          = regexp.MustCompile(`^(.*?)[ \t]+\{#([A-Za-z0-9][A-Za-z0-9_-]*)\}$`)
+	tocLinkLabelRE       = regexp.MustCompile(`!?\[([^\]]*)\]\([^)]*\)`)
+	footnoteAnchorIDRE   = regexp.MustCompile(`^cb[0-9]+$`)
 	setextHeadingRE      = regexp.MustCompile(`^[ \t]*(=+|-+)[ \t]*$`)
 	tableSeparatorCellRE = regexp.MustCompile(`^:?-{3,}:?$`)
 )
@@ -137,11 +139,20 @@ func renderMarkdownBlocks(lines []string, state *markdownRenderState) (string, e
 
 		if i+1 < len(lines) {
 			if level, ok := setextHeadingLevel(lines[i+1]); ok && strings.TrimSpace(lines[i]) != "" {
-				body, err := renderInline(strings.TrimSpace(lines[i]), state)
+				source := strings.TrimSpace(lines[i])
+				body, err := renderInline(source, state)
 				if err != nil {
 					return "", err
 				}
-				out = append(out, fmt.Sprintf("<h%d>%s</h%d>", level, body, level))
+				id, err := collectTOCHeading(state, level, source, "")
+				if err != nil {
+					return "", err
+				}
+				if id != "" {
+					out = append(out, fmt.Sprintf(`<h%d id="%s">%s</h%d>`, level, id, body, level))
+				} else {
+					out = append(out, fmt.Sprintf("<h%d>%s</h%d>", level, body, level))
+				}
 				i += 2
 				continue
 			}
@@ -672,28 +683,60 @@ func renderATXHeading(line string, state *markdownRenderState) (string, bool, er
 	if err != nil {
 		return "", true, err
 	}
-	if state.collectTOC && state.blockquoteDepth == 0 && level == 2 {
-		tocSource := strings.TrimSpace(rawFootnoteRefRE.ReplaceAllString(body, ""))
-		if id == "" {
-			id = slugifyHeadingID(tocSource)
-			if id == "" {
-				return "", true, fmt.Errorf("cannot derive an anchor for heading %q; add an explicit {#id}", body)
-			}
-		}
-		if state.tocIDs[id] {
-			return "", true, fmt.Errorf("duplicate heading anchor %q; add an explicit {#id} to disambiguate", id)
-		}
-		state.tocIDs[id] = true
-		tocText, err := renderInlineWithOptions(tocSource, state, inlineOptions{})
-		if err != nil {
-			return "", true, err
-		}
-		state.tocEntries = append(state.tocEntries, TOCEntry{Href: "#" + id, Text: template.HTML(tocText)})
+	id, err = collectTOCHeading(state, level, body, id)
+	if err != nil {
+		return "", true, err
 	}
 	if id != "" {
 		return fmt.Sprintf(`<h%d id="%s">%s</h%d>`, level, id, rendered, level), true, nil
 	}
 	return fmt.Sprintf("<h%d>%s</h%d>", level, rendered, level), true, nil
+}
+
+// collectTOCHeading registers heading anchors and collects TOC entries while
+// TOC collection is active. Level-2 headings outside blockquotes receive
+// auto-derived anchors and TOC entries; explicit anchors on any heading join
+// duplicate detection so the page's ids stay unique. It returns the id the
+// heading must emit.
+func collectTOCHeading(state *markdownRenderState, level int, body, id string) (string, error) {
+	if !state.collectTOC {
+		return id, nil
+	}
+	eligible := level == 2 && state.blockquoteDepth == 0
+	tocSource := strings.TrimSpace(stripTOCMarkup(body))
+	if id == "" && eligible {
+		id = slugifyHeadingID(tocSource)
+		if id == "" {
+			return "", fmt.Errorf("cannot derive an anchor for heading %q; add an explicit {#id}", body)
+		}
+	}
+	if id == "" {
+		return "", nil
+	}
+	if state.tocIDs[id] {
+		return "", fmt.Errorf("duplicate heading anchor %q; add an explicit {#id} to disambiguate", id)
+	}
+	if len(state.defs) > 0 && footnoteAnchorIDRE.MatchString(id) {
+		return "", fmt.Errorf("heading anchor %q collides with footnote checkbox ids; choose a different {#id}", id)
+	}
+	state.tocIDs[id] = true
+	if !eligible {
+		return id, nil
+	}
+	tocText, err := renderInlineWithOptions(tocSource, state, inlineOptions{})
+	if err != nil {
+		return "", err
+	}
+	state.tocEntries = append(state.tocEntries, TOCEntry{Href: "#" + id, Text: template.HTML(tocText)})
+	return id, nil
+}
+
+// stripTOCMarkup reduces a heading's source text to the words a TOC entry
+// shows: footnote refs become spaces and link/image markup contributes only
+// its label.
+func stripTOCMarkup(body string) string {
+	body = rawFootnoteRefRE.ReplaceAllString(body, " ")
+	return tocLinkLabelRE.ReplaceAllString(body, "$1")
 }
 
 func slugifyHeadingID(text string) string {
@@ -731,10 +774,7 @@ func setextHeadingLevel(line string) (int, bool) {
 
 func isRawHTMLLine(line string) bool {
 	trimmed := strings.TrimLeft(line, " \t")
-	if len(trimmed) < 2 || trimmed[0] != '<' {
-		return false
-	}
-	return trimmed[1] == '/' || trimmed[1] == '!' || isASCIILetter(trimmed[1])
+	return len(trimmed) > 0 && trimmed[0] == '<' && isInlineHTMLStart(trimmed, 0)
 }
 
 func rawHTMLTagToken(line string) string {
@@ -750,12 +790,27 @@ func rawHTMLTagToken(line string) string {
 	return trimmed[1:end]
 }
 
+// isInlineHTMLStart reports whether the '<' at text[i] begins an HTML-shaped
+// construct: a tag (`<a`), a closing tag (`</a`), a comment (`<!--`), or a
+// declaration (`<!D`). A '<' followed by anything else — space, digit,
+// punctuation, or end of text — is ordinary prose.
 func isInlineHTMLStart(text string, i int) bool {
 	if i+1 >= len(text) {
 		return false
 	}
-	next := text[i+1]
-	return next == '/' || next == '!' || isASCIILetter(next)
+	switch next := text[i+1]; {
+	case isASCIILetter(next):
+		return true
+	case next == '/':
+		return i+2 < len(text) && isASCIILetter(text[i+2])
+	case next == '!':
+		if i+3 < len(text) && text[i+2] == '-' && text[i+3] == '-' {
+			return true
+		}
+		return i+2 < len(text) && isASCIILetter(text[i+2])
+	default:
+		return false
+	}
 }
 
 func isASCIILetter(value byte) bool {
