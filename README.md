@@ -252,15 +252,27 @@ code, ordered lists, unordered lists, static task-list items, blockquotes,
 simple pipe tables, fenced code blocks, horizontal rules, and literal numeric
 inline notes.
 
-Raw HTML is not supported in markdown bodies. Block and inline HTML tags,
-closing tags, and comments are rejected with a build error; use the `.html`
-body format for full-HTML authoring, or a code span for literal tag text.
-Autolink syntax (`<https://example.org>`) is likewise rejected; write
-`[label](https://example.org)` instead. A `<` is rejected only when it reads
-as HTML: `<` or `</` followed by a letter, or `<!` beginning a comment or
-declaration. Anything else — `a < b`, `1<2`, `</3`, `<!?`, a trailing `<` —
-is ordinary text, but `a<b` is rejected because `<b` reads as a tag; write
-`a < b` or use a code span.
+Markdown bodies must be **pure Markdown with a YAML front-matter header** — no
+embedded HTML in any form. Two kinds of HTML are rejected at build time, each
+with a file and a 1-based line number:
+
+- **HTML elements.** Block and inline tags, closing tags, and comments
+  (`<div>`, `</p>`, `<!-- … -->`) are rejected; use the `.html` body format for
+  full-HTML authoring, or a code span for literal tag text. Autolink syntax
+  (`<https://example.org>`) is likewise rejected; write
+  `[label](https://example.org)` instead. A `<` is flagged only when it reads
+  as HTML: `<` or `</` followed by a letter, or `<!` beginning a comment or
+  declaration. Anything else — `a < b`, `1<2`, `</3`, `<!?`, a trailing `<` —
+  is ordinary text, but `a<b` is rejected because `<b` reads as a tag.
+- **HTML character entities.** Named, decimal, and hexadecimal references
+  (`&nbsp;`, `&amp;`, `&#160;`, `&#xA0;`) are rejected; type the character
+  directly — a real non-breaking space, `&`, `—`, and so on. A bare `&` that is
+  not a complete `&entity;` reference (e.g. `Tom & Jerry`, a `?a=1&b=2` query
+  string) is ordinary text.
+
+Both checks ignore content inside fenced code blocks and inline code spans, so
+literal tags and entities can still be displayed as code. Standard CommonMark
+backslash escapes (`\*`, `1\.`) are Markdown rather than HTML and are permitted.
 
 Task-list items render as static list text with checkbox glyphs, not form
 controls or JavaScript. Markdown links may use relative URLs, fragments,

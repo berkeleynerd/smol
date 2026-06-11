@@ -87,6 +87,9 @@ func renderGeminiPage(page Page) (string, error) {
 			return "", err
 		}
 	case bodyFormatMarkdownXHTML:
+		if err := ValidateMarkdownSource(body, page.bodyLine); err != nil {
+			return "", err
+		}
 		body, err = RenderMarkdownGemtext(body)
 		if err != nil {
 			return "", err

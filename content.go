@@ -57,6 +57,7 @@ type Page struct {
 	contentDir   string
 	bodyPath     string
 	body         []byte
+	bodyLine     int
 	tocRequested bool
 }
 
@@ -190,6 +191,7 @@ func loadContentSource(site SiteConfig, kind, slug, sourcePath, contentDir strin
 	if err != nil {
 		return Page{}, err
 	}
+	bodyLine := 1 + bytes.Count(data[:len(data)-len(body)], []byte("\n"))
 	if err := validateContentMeta(meta, kind, slug, bodyFormat, site.OutputMode); err != nil {
 		return Page{}, err
 	}
@@ -218,6 +220,7 @@ func loadContentSource(site SiteConfig, kind, slug, sourcePath, contentDir strin
 		contentDir:   contentDir,
 		bodyPath:     sourcePath,
 		body:         body,
+		bodyLine:     bodyLine,
 		tocRequested: meta.TOC,
 	}, nil
 }

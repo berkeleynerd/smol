@@ -219,7 +219,16 @@
     "expect": "fail",
     "starter": "default",
     "fixture": "invalid/html-in-markdown-body",
-    "error_substring": "raw HTML is not supported in markdown bodies"
+    "error_substring": "embedded HTML is not supported in markdown bodies"
+  },
+  {
+    "name": "html-entity-in-markdown-body",
+    "output_mode": "",
+    "action": "build",
+    "expect": "fail",
+    "starter": "default",
+    "fixture": "invalid/html-entity-in-markdown-body",
+    "error_substring": "HTML character entities are not supported in markdown bodies"
   },
   {
     "name": "javascript-in-chrome",

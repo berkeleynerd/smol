@@ -817,6 +817,81 @@ func isASCIILetter(value byte) bool {
 	return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z')
 }
 
+var markdownHTMLEntityRE = regexp.MustCompile(`^&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);`)
+
+// ValidateMarkdownSource enforces the pure-Markdown doctrine: a markdown body
+// may not embed HTML in any form — neither HTML elements (<div>, </p>,
+// <!-- … -->) nor HTML character references (&nbsp;, &amp;, &#160;, &#xA0;).
+// Standard CommonMark backslash escapes are permitted, since they are Markdown
+// rather than HTML. Angle brackets and ampersands inside fenced code blocks and
+// inline code spans are literal content and are therefore allowed. baseLine is
+// the 1-based source-file line of the body's first line, so the reported line
+// number is absolute within the .md file.
+func ValidateMarkdownSource(body string, baseLine int) error {
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	body = strings.ReplaceAll(body, "\r", "\n")
+	if baseLine < 1 {
+		baseLine = 1
+	}
+	inFence := false
+	fence := ""
+	inCodeSpan := false
+	for idx, line := range strings.Split(body, "\n") {
+		lineNo := baseLine + idx
+		if inFence {
+			if strings.HasPrefix(strings.TrimLeft(line, " \t"), fence) {
+				inFence = false
+			}
+			continue
+		}
+		if marker, ok := fencedCodeMarker(line); ok {
+			inFence = true
+			fence = marker
+			inCodeSpan = false
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			inCodeSpan = false
+			continue
+		}
+		for i := 0; i < len(line); {
+			if inCodeSpan {
+				if line[i] == '`' {
+					inCodeSpan = false
+				}
+				i++
+				continue
+			}
+			switch line[i] {
+			case '\\':
+				// CommonMark backslash escape: the escaped punctuation is
+				// literal text, so step over it. Escapes are Markdown, not HTML.
+				if i+1 < len(line) && isEscapableMarkdownByte(line[i+1]) {
+					i += 2
+				} else {
+					i++
+				}
+			case '`':
+				inCodeSpan = true
+				i++
+			case '&':
+				if entity := markdownHTMLEntityRE.FindString(line[i:]); entity != "" {
+					return fmt.Errorf("line %d: HTML character entities are not supported in markdown bodies; type the character directly (found %q)", lineNo, entity)
+				}
+				i++
+			case '<':
+				if isInlineHTMLStart(line, i) {
+					return fmt.Errorf("line %d: embedded HTML is not supported in markdown bodies; use pure Markdown (found %q)", lineNo, "<"+rawHTMLTagToken(line[i:])+">")
+				}
+				i++
+			default:
+				i++
+			}
+		}
+	}
+	return nil
+}
+
 func fencedCodeMarker(line string) (string, bool) {
 	trimmed := strings.TrimLeft(line, " \t")
 	if strings.HasPrefix(trimmed, "```") {
@@ -1003,50 +1078,131 @@ func applyTaskMarker(marker *listMarker) {
 	marker.text = strings.TrimLeft(marker.text[3:], " \t")
 }
 
+// listItemBlock is one collected list item: its marker plus the item's content
+// lines, already dedented to the marker's content column. An empty string in
+// content marks a paragraph break (a blank line within the item).
+type listItemBlock struct {
+	marker  listMarker
+	content []string
+}
+
 func renderList(lines []string, start int, kind string, state *markdownRenderState) (string, int, error) {
-	items := []listMarker{}
+	var items []listItemBlock
+	// A list is "loose" if any items are separated by a blank line, or any item
+	// contains a blank line between paragraphs; loose items render with <p>.
+	loose := false
 	i := start
 	for i < len(lines) {
 		marker, ok := parseListMarker(lines[i])
 		if !ok || marker.kind != kind {
 			break
 		}
-		items = append(items, marker)
+		contentIndent := listContentIndent(lines[i], marker)
+		content := []string{marker.text}
 		i++
+		blanks := 0
+		endList := false
+		for i < len(lines) {
+			line := lines[i]
+			if strings.TrimSpace(line) == "" {
+				blanks++
+				i++
+				continue
+			}
+			// A sibling marker at the list's own indentation starts the next item.
+			if m, ok := parseListMarker(line); ok && m.kind == kind && indentWidth(line) < contentIndent {
+				if blanks > 0 {
+					// A blank line before a same-kind marker keeps it in this
+					// (loose) list — unless its task-ness differs, in which case
+					// it begins a separate list (e.g. plain bullets, then a
+					// checkbox task list).
+					if m.task != marker.task {
+						endList = true
+					} else {
+						loose = true
+					}
+				}
+				break
+			}
+			// A line indented to the content column continues this item.
+			if indentWidth(line) >= contentIndent {
+				if blanks > 0 {
+					content = append(content, "")
+					loose = true
+				}
+				content = append(content, stripIndent(line, contentIndent))
+				blanks = 0
+				i++
+				continue
+			}
+			// Anything else (a non-indented, non-marker line) ends the list.
+			break
+		}
+		items = append(items, listItemBlock{marker: marker, content: content})
+		if endList {
+			break
+		}
 	}
+
 	taskList := false
 	for _, item := range items {
-		if item.task {
+		if item.marker.task {
 			taskList = true
 			break
 		}
 	}
+
 	var out strings.Builder
-	if kind == "ol" {
-		out.WriteString("<ol>")
-	} else if taskList {
+	switch {
+	case kind == "ol":
+		// Preserve the first item's number so a list that does not begin at 1
+		// (e.g. a numbered section resuming after a heading) continues correctly.
+		start := ""
+		if len(items) > 0 {
+			if n := items[0].marker.number; n != "" && n != "1" {
+				start = ` start="` + n + `"`
+			}
+		}
+		out.WriteString("<ol" + start + ">")
+	case taskList:
 		out.WriteString(`<ul class="task-list">`)
-	} else {
+	default:
 		out.WriteString("<ul>")
 	}
 	for _, item := range items {
 		out.WriteByte('\n')
-		if item.task {
+		if item.marker.task {
 			out.WriteString(`<li class="task-list-item">`)
-			if item.checked {
+			if item.marker.checked {
 				out.WriteString("&#9745; ")
 			} else {
 				out.WriteString("&#9744; ")
 			}
+			rendered, err := renderInline(strings.TrimSpace(strings.Join(item.content, "\n")), state)
+			if err != nil {
+				return "", start, err
+			}
+			out.WriteString(rendered)
+			out.WriteString("</li>")
+			continue
+		}
+		if loose {
+			inner, err := renderMarkdownBlocks(item.content, state)
+			if err != nil {
+				return "", start, err
+			}
+			out.WriteString("<li>\n")
+			out.WriteString(inner)
+			out.WriteString("\n</li>")
 		} else {
+			rendered, err := renderInline(strings.Join(item.content, "\n"), state)
+			if err != nil {
+				return "", start, err
+			}
 			out.WriteString("<li>")
+			out.WriteString(rendered)
+			out.WriteString("</li>")
 		}
-		rendered, err := renderInline(item.text, state)
-		if err != nil {
-			return "", start, err
-		}
-		out.WriteString(rendered)
-		out.WriteString("</li>")
 	}
 	out.WriteByte('\n')
 	if kind == "ol" {
@@ -1055,6 +1211,29 @@ func renderList(lines []string, start int, kind string, state *markdownRenderSta
 		out.WriteString("</ul>")
 	}
 	return out.String(), i, nil
+}
+
+// indentWidth counts leading space/tab characters.
+func indentWidth(line string) int {
+	return len(line) - len(strings.TrimLeft(line, " \t"))
+}
+
+// stripIndent removes up to n leading space/tab characters.
+func stripIndent(line string, n int) string {
+	if w := indentWidth(line); w < n {
+		n = w
+	}
+	return line[n:]
+}
+
+// listContentIndent is the column at which a list item's content begins —
+// the marker's own indentation plus the marker width and its trailing space.
+func listContentIndent(line string, marker listMarker) int {
+	base := indentWidth(line)
+	if marker.kind == "ol" {
+		return base + len(marker.number) + 2
+	}
+	return base + 2
 }
 
 func collectParagraph(lines []string, start int) ([]string, int) {

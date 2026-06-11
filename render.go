@@ -324,6 +324,9 @@ func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []Manifest
 		return "", nil, nil, fmt.Errorf("content body was not loaded for %s %q", page.Kind, page.Slug)
 	}
 	if page.BodyFormat == bodyFormatMarkdownXHTML {
+		if err := ValidateMarkdownSource(string(body), page.bodyLine); err != nil {
+			return "", nil, nil, err
+		}
 		var resources []ManifestResource
 		html, toc, err := RenderMarkdownXHTMLDocument(string(body), func(path, alt, title string) (string, error) {
 			html, resource, err := embedImageWithTitle(page, path, alt, title)
