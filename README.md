@@ -446,6 +446,16 @@ smol build --sign-key FINGERPRINT
 smol build --sign-key FINGERPRINT --attest /path/to/attested-html
 ```
 
+### Precompressed siblings
+
+Every generated HTML page is also written as a deterministic
+best-compression gzip sibling (`index.html.gz`) of its final bytes — for
+signed builds, the bytes after the attestation trailer is appended — so
+static servers configured for precompressed content (OpenBSD httpd
+`gzip-static`, nginx `gzip_static on;`) can serve the smaller file while
+clients decompress to exactly the attested page. `smol check` ignores the
+`.gz` siblings, and `flat-gemini-v1` capsules do not emit them.
+
 Explicit `--attest` or `--attested-html` paths win. If no explicit signer path
 is supplied, `smol` searches `PATH` for `attest`, then `attested-html`. It then
 checks sibling directories beside the resolved `smol` executable: `../attest`

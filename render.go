@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -206,6 +207,9 @@ func BuildSite(opts BuildOptions) error {
 			if err := atomicWriteFile(result.finalPath, data, 0o644); err != nil {
 				return err
 			}
+			if err := writeGzipSibling(result.finalPath); err != nil {
+				return err
+			}
 			fmt.Fprintf(opts.Stdout, "built: %s\n", cleanSlash(relativeDisplay(siteDir, result.finalPath)))
 			continue
 		}
@@ -215,12 +219,37 @@ func BuildSite(opts BuildOptions) error {
 		if err := SignHTML(attestTool, opts.SignKey, result.tempPath, result.finalPath); err != nil {
 			return err
 		}
+		if err := writeGzipSibling(result.finalPath); err != nil {
+			return err
+		}
 		fmt.Fprintf(opts.Stdout, "signed: %s\n", cleanSlash(relativeDisplay(siteDir, result.finalPath)))
 	}
 	if opts.SignKey == "" {
 		fmt.Fprintln(opts.Stdout, "note: generated unsigned HTML; run with --sign or --sign-key to create attested pages")
 	}
 	return nil
+}
+
+// writeGzipSibling writes a deterministic best-compression gzip of the final
+// page bytes next to it, so static servers can serve precompressed content
+// that decompresses to exactly the attested file.
+func writeGzipSibling(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	if err != nil {
+		return err
+	}
+	if _, err := zw.Write(data); err != nil {
+		return err
+	}
+	if err := zw.Close(); err != nil {
+		return err
+	}
+	return atomicWriteFile(path+".gz", buf.Bytes(), 0o644)
 }
 
 func renderNestedPage(themeDir string, themeCfg ThemeConfig, site SiteView, page Page, resources []ManifestResource, root TemplateRoot) (string, error) {

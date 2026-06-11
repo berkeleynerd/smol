@@ -46,15 +46,21 @@ func TestSampleFixtureRepeatedBuildsAreDeterministic(t *testing.T) {
 	firstArticle := readText(t, filepath.Join(dir, "public", "article-1.html"))
 	firstReference := readText(t, filepath.Join(dir, "public", "reference.html"))
 
+	firstGzip := readText(t, filepath.Join(dir, "public", "article-1.html.gz"))
+
 	buildSite(t, dir)
 	secondArticle := readText(t, filepath.Join(dir, "public", "article-1.html"))
 	secondReference := readText(t, filepath.Join(dir, "public", "reference.html"))
+	secondGzip := readText(t, filepath.Join(dir, "public", "article-1.html.gz"))
 
 	if firstArticle != secondArticle {
 		t.Fatalf("repeated build changed article-1.html")
 	}
 	if firstReference != secondReference {
 		t.Fatalf("repeated build changed reference.html")
+	}
+	if firstGzip != secondGzip {
+		t.Fatalf("repeated build changed article-1.html.gz")
 	}
 }
 
