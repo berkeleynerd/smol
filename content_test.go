@@ -161,6 +161,11 @@ func TestParseContentFrontMatter(t *testing.T) {
 			wantMeta: ContentMeta{TOC: true},
 			wantBody: "Body.\n",
 		},
+		"nav label": {
+			input:    "---\ntitle: \"THE LONG TITLE\"\nnav_label: Short\n---\nBody.\n",
+			wantMeta: ContentMeta{Title: "THE LONG TITLE", NavLabel: "Short"},
+			wantBody: "Body.\n",
+		},
 		"json metadata": {
 			input:    "----\n",
 			wantBody: "----\n",
@@ -335,7 +340,7 @@ func TestValidatePageLinksReportsDeterministically(t *testing.T) {
 }
 
 func TestFrontMatterParserRegistryIsRecognizedKeySource(t *testing.T) {
-	for _, key := range []string{"title", "summary", "published", "published_utc", "updated", "updated_utc", "draft", "toc", "tags", "links"} {
+	for _, key := range []string{"title", "nav_label", "summary", "published", "published_utc", "updated", "updated_utc", "draft", "toc", "tags", "links"} {
 		if _, ok := frontMatterParsers[key]; !ok {
 			t.Fatalf("frontMatterParsers missing %q", key)
 		}

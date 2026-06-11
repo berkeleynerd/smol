@@ -238,7 +238,7 @@ func TestBuildCommandInteractiveSignSingleKeyAccepts(t *testing.T) {
 		return []gpgSecretKey{{Fingerprint: "AUTO-FPR", UID: "Curator <curator@example.org>"}}, nil
 	})
 	var out, stderr strings.Builder
-	err := commandBuildWithIO([]string{"--sign", "--attest", fake, dir}, strings.NewReader("y\n"), &out, &stderr, true)
+	err := commandBuildWithIO([]string{"--sign", "--attest", fake, dir}, strings.NewReader(""), &out, &stderr, true)
 	if err != nil {
 		t.Fatalf("commandBuildWithIO interactive sign: %v", err)
 	}
@@ -246,8 +246,8 @@ func TestBuildCommandInteractiveSignSingleKeyAccepts(t *testing.T) {
 	if !strings.Contains(html, "FAKE-SIGNED key=AUTO-FPR") {
 		t.Fatalf("signed output did not use selected key: %s", html)
 	}
-	if !strings.Contains(stderr.String(), "Curator <curator@example.org>") {
-		t.Fatalf("stderr missing key prompt: %s", stderr.String())
+	if !strings.Contains(stderr.String(), "Signing with AUTO-FPR Curator <curator@example.org>") || strings.Contains(stderr.String(), "[y/N]") {
+		t.Fatalf("stderr did not report auto-selected single key cleanly: %s", stderr.String())
 	}
 }
 
@@ -256,7 +256,7 @@ func TestBuildCommandInteractiveDeclineBypassesConfigSignKey(t *testing.T) {
 	replaceInFile(t, filepath.Join(dir, "smol.json"), `"sign_key": ""`, `"sign_key": "CONFIG"`)
 	fake := fakeSigner(t, t.TempDir(), "fake-attest", 0)
 	withSecretKeys(t, func() ([]gpgSecretKey, error) {
-		return []gpgSecretKey{{Fingerprint: "AUTO-FPR", UID: "Curator <curator@example.org>"}}, nil
+		return []gpgSecretKey{{Fingerprint: "FPR1"}, {Fingerprint: "FPR2"}}, nil
 	})
 	var out, stderr strings.Builder
 	err := commandBuildWithIO([]string{"--sign", "--attest", fake, dir}, strings.NewReader("\n"), &out, &stderr, true)

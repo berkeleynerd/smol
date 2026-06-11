@@ -479,23 +479,11 @@ func promptSigningKey(stdin io.Reader, stderr io.Writer, interactive bool) (stri
 	if len(keys) == 0 {
 		return "", fmt.Errorf("no GPG secret keys found")
 	}
-	reader := bufio.NewReader(stdin)
 	if len(keys) == 1 {
-		fmt.Fprintf(stderr, "Sign with %s? [y/N] ", formatGPGSecretKey(keys[0]))
-		answer, err := readPromptLine(reader)
-		if err != nil {
-			return "", err
-		}
-		if isDeclineAnswer(answer) {
-			return "", nil
-		}
-		switch strings.ToLower(answer) {
-		case "y", "yes":
-			return keys[0].Fingerprint, nil
-		default:
-			return "", fmt.Errorf("invalid signing response: %q", answer)
-		}
+		fmt.Fprintf(stderr, "Signing with %s\n", formatGPGSecretKey(keys[0]))
+		return keys[0].Fingerprint, nil
 	}
+	reader := bufio.NewReader(stdin)
 	fmt.Fprintln(stderr, "Select a signing key:")
 	for i, key := range keys {
 		fmt.Fprintf(stderr, "  %d) %s\n", i+1, formatGPGSecretKey(key))

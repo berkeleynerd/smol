@@ -466,14 +466,14 @@ func TestPublishCommandInteractiveSignAccepts(t *testing.T) {
 		runPublishSite = original
 	})
 	var out, stderr strings.Builder
-	if err := commandPublishWithIO([]string{"--sign", dir}, strings.NewReader("y\n"), &out, &stderr, true); err != nil {
+	if err := commandPublishWithIO([]string{"--sign", dir}, strings.NewReader(""), &out, &stderr, true); err != nil {
 		t.Fatalf("commandPublishWithIO: %v", err)
 	}
 	if got.SignKey != "FPR" || !got.SignKeySource {
 		t.Fatalf("publish options SignKey=%q SignKeySource=%v, want selected key", got.SignKey, got.SignKeySource)
 	}
-	if !strings.Contains(stderr.String(), "Curator <curator@example.org>") {
-		t.Fatalf("stderr missing signing prompt: %s", stderr.String())
+	if !strings.Contains(stderr.String(), "Signing with FPR Curator <curator@example.org>") || strings.Contains(stderr.String(), "[y/N]") {
+		t.Fatalf("stderr did not report auto-selected single key cleanly: %s", stderr.String())
 	}
 }
 

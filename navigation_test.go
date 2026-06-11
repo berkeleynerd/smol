@@ -211,6 +211,28 @@ func TestExplicitPageNavigationRendersFlatXHTMLHrefs(t *testing.T) {
 	}
 }
 
+func TestNavigationUsesNavLabelOverTitle(t *testing.T) {
+	dir := t.TempDir()
+	if err := InitSiteWithStarter(dir, starterClassicXHTML); err != nil {
+		t.Fatalf("InitSiteWithStarter classic-xhtml: %v", err)
+	}
+	addFieldsToContentSource(t, filepath.Join(dir, "content", "pages", "about.md"), []string{`nav_label: "Shortcut"`})
+	addFieldsToContentSource(t, filepath.Join(dir, "content", "pages", "sample", "index.md"), []string{"links:", "  up: about", "  previous: index"})
+	buildSite(t, dir)
+
+	html := readText(t, filepath.Join(dir, "public", "sample.html"))
+	if !strings.Contains(html, `<a href="about.html" rel="up">Up: Shortcut</a>`) {
+		t.Fatalf("navigation did not use nav_label:\n%s", html)
+	}
+	if !strings.Contains(html, `<a href="index.html" rel="previous">Previous: Home</a>`) {
+		t.Fatalf("navigation without nav_label did not fall back to title:\n%s", html)
+	}
+	about := readText(t, filepath.Join(dir, "public", "about.html"))
+	if !strings.Contains(about, "<h1>About</h1>") || !strings.Contains(about, "<title>About</title>") {
+		t.Fatalf("nav_label leaked into the page's own title chrome:\n%s", about)
+	}
+}
+
 func writeHTMLPageWithLinks(t *testing.T, dir, slug, title string, draft bool, links []string) {
 	t.Helper()
 	fields := []string{"title: " + quoteFrontMatterString(title)}

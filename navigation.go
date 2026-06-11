@@ -116,7 +116,14 @@ func resolveRequiredNavigationLink(source Page, targets map[string]Page, outputM
 	if target.Slug == source.Slug {
 		return PageNavigationLink{}, fmt.Errorf("page %q links.%s cannot target itself", source.Slug, rel)
 	}
-	return navigationLink(source, target, outputMode, rel, labelPrefix+": "+target.Title), nil
+	return navigationLink(source, target, outputMode, rel, labelPrefix+": "+navigationLabelName(target)), nil
+}
+
+func navigationLabelName(target Page) string {
+	if target.NavLabel != "" {
+		return target.NavLabel
+	}
+	return target.Title
 }
 
 func navigationLink(source, target Page, outputMode, rel, label string) PageNavigationLink {

@@ -184,6 +184,7 @@ grammar is:
 | Single quotes | `''` becomes `'`; backslashes are literal; trailing text after the closing quote is rejected. |
 | Lists | Inline `[a, "b, c", 'd']` or block lists at/deeper than the key indentation. Quotes delimit inline items only when they start an item, so apostrophes inside bare items are literal. Empty inline list `[]` is valid; bare `tags:` with no items is rejected. Top-level block lists are flat. The first non-list line ends a block list. |
 | Links | `links` is a strict block map with `up`, `previous`, `next`, and `related`; those subkeys are not top-level keys and are not guarded inside unknown foreign blocks. |
+| Navigation label | Optional `nav_label` scalar names the page in other pages' generated navigation (`Up`/`Previous`/`Next`/`Related` links); when absent, the page title is used. The page's own `<h1>` and `<title>` always use `title`. |
 | Dates | RFC3339 timestamps are accepted unchanged. Bare `YYYY-MM-DD` dates are normalized to midnight UTC. Empty date fields are treated as omitted. Other date formats are rejected. |
 | Table of contents | `toc: true` generates a table of contents from the page's level-2 Markdown headings, ATX or setext. Anchors are auto-derived (lowercase letters and digits, other runs become single hyphens; non-ASCII characters are dropped); an explicit `{#id}` on an ATX heading overrides. Link and image markup in a collected heading contributes only its label to the entry text and anchor. With `toc: true` every heading anchor on the page must be unique and must not collide with footnote checkbox ids. Duplicate or underivable anchors are errors, as is `toc: true` with no level-2 headings, a non-Markdown body, or `flat-gemini-v1` output. |
 | Comments | Unsupported; `#` is literal text. |
@@ -202,7 +203,8 @@ as acronyms or proper nouns.
 Link values are page slugs only. Post slugs, draft pages, unknown slugs,
 self-links, duplicate `related` targets, and external URLs are rejected. Themes
 can render the resolved links with `.PageNav`; the starter themes render them as
-generated navigation chrome outside the authored content body. This is
+generated navigation chrome outside the authored content body. Navigation
+labels use the target page's `nav_label` when set, otherwise its title. This is
 structural isolation only: signed HTML still covers the full generated page.
 Manifest region hashes are provenance and drift-check aids; tamper resistance
 comes from the whole-page attested signature.

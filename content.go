@@ -15,6 +15,7 @@ import (
 
 type ContentMeta struct {
 	Title        string     `json:"title"`
+	NavLabel     string     `json:"nav_label"`
 	Summary      string     `json:"summary"`
 	PublishedUTC string     `json:"published_utc"`
 	UpdatedUTC   string     `json:"updated_utc"`
@@ -39,6 +40,7 @@ type PageLinks struct {
 type Page struct {
 	Kind         string
 	Title        string
+	NavLabel     string
 	Slug         string
 	Summary      string
 	PublishedUTC string
@@ -202,6 +204,7 @@ func loadContentSource(site SiteConfig, kind, slug, sourcePath, contentDir strin
 	return Page{
 		Kind:         kind,
 		Title:        resolveContentTitle(meta.Title, slug),
+		NavLabel:     meta.NavLabel,
 		Slug:         slug,
 		Summary:      meta.Summary,
 		PublishedUTC: meta.PublishedUTC,
@@ -391,6 +394,14 @@ var frontMatterParsers = map[string]frontMatterParser{
 			return index, fmt.Errorf("title must not be empty")
 		}
 		state.meta.Title = title
+		return index, nil
+	},
+	"nav_label": func(state *frontMatterParseState, _ []frontMatterLine, index int, value string) (int, error) {
+		v, err := parseScalarString(value)
+		if err != nil {
+			return index, err
+		}
+		state.meta.NavLabel = v
 		return index, nil
 	},
 	"summary": func(state *frontMatterParseState, _ []frontMatterLine, index int, value string) (int, error) {
