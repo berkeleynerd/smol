@@ -17,7 +17,6 @@
           "<!--smol:generated-navigation-->",
           "<a href=\"#top\" rel=\"top\">Top</a>",
           "<a href=\"../index.html\" rel=\"home\">Home</a>",
-          "<a href=\"../index.html\" rel=\"up\">Up: Home</a>",
           "<a href=\"../sample/\" rel=\"next\">Next: Sample</a>",
           "<a href=\"../reference/\" rel=\"related\">Related: Reference</a>"
         ],
@@ -31,7 +30,10 @@
             "<!--smol:generated-navigation-->",
             "Next: Sample"
           ]
-        }
+        },
+        "not_contains": [
+          "rel=\"up\""
+        ]
       }
     ]
   },

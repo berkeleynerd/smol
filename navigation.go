@@ -67,6 +67,9 @@ func resolvePageNavigation(source Page, targets map[string]Page, outputMode stri
 	if err != nil {
 		return PageNavigation{}, err
 	}
+	if nav.Home != nil && source.Links.Up == "index" {
+		nav.Up = nil
+	}
 	nav.Previous, err = resolveSingleNavigationLink(source, targets, outputMode, "previous", source.Links.Previous, "Previous")
 	if err != nil {
 		return PageNavigation{}, err

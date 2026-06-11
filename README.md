@@ -204,7 +204,9 @@ Link values are page slugs only. Post slugs, draft pages, unknown slugs,
 self-links, duplicate `related` targets, and external URLs are rejected. Themes
 can render the resolved links with `.PageNav`; the starter themes render them as
 generated navigation chrome outside the authored content body. Navigation
-labels use the target page's `nav_label` when set, otherwise its title. This is
+labels use the target page's `nav_label` when set, otherwise its title. An
+`up: index` link is validated but rendered only as the `Home` link — `Up`
+appears in the chrome only when the parent is a page other than home. This is
 structural isolation only: signed HTML still covers the full generated page.
 Manifest region hashes are provenance and drift-check aids; tamper resistance
 comes from the whole-page attested signature.

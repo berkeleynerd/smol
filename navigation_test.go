@@ -166,13 +166,15 @@ func TestExplicitPageNavigationRendersOutsideAuthoredContent(t *testing.T) {
 		generatedNavigationOpen,
 		`<a href="#top" rel="top">Top</a>`,
 		`<a href="../index.html" rel="home">Home</a>`,
-		`<a href="../index.html" rel="up">Up: Home</a>`,
 		`<a href="../sample/" rel="next">Next: Sample</a>`,
 		`<a href="../reference/" rel="related">Related: Reference</a>`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("about output missing %q:\n%s", want, html)
 		}
+	}
+	if strings.Contains(html, `rel="up"`) {
+		t.Fatalf("up link to home was not suppressed as redundant:\n%s", html)
 	}
 	mainClose := strings.Index(html, "</main>")
 	navAt := strings.Index(html, generatedNavigationOpen)
