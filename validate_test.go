@@ -14,6 +14,47 @@ func TestCSSURLIsRejected(t *testing.T) {
 	}
 }
 
+func TestCSSAllowsSafeInput(t *testing.T) {
+	cases := map[string]string{
+		"scroll-behavior":          `scroll-behavior:smooth`,
+		"overscroll-behavior":      `overscroll-behavior:none`,
+		"scroll-behavior in rule":  `html { scroll-behavior:smooth; }`,
+		"overscroll behavior axis": `body { overscroll-behavior-x:contain; }`,
+		"url word in comment":      `/* no url() assets bundled */ body { color: #000; }`,
+		"import word in comment":   `/* @import is intentionally avoided */ a { color: red; }`,
+		"behavior word in comment": `/* avoids the IE behavior: htc trick */ p { margin: 0; }`,
+		"dangerous rule commented": `/* body { background: url(x.png); } */ p { margin: 0; }`,
+	}
+	for name, css := range cases {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateCSS(css); err != nil {
+				t.Fatalf("ValidateCSS rejected safe CSS %q: %v", css, err)
+			}
+		})
+	}
+}
+
+func TestCSSRejectsDangerousInput(t *testing.T) {
+	cases := map[string]string{
+		"url function":         `body { background: url(x.png); }`,
+		"import":               `@import 'x.css';`,
+		"expression":           `div { width: expression(alert(1)); }`,
+		"ie behavior with url": `body { behavior: url(evil.htc); }`,
+		"ie behavior bare":     `body { behavior: default; }`,
+		"ie behavior at start": `behavior:url(evil.htc)`,
+		"ie behavior spaced":   `body { behavior : url(evil.htc); }`,
+		"moz binding":          `a { -moz-binding: thing; }`,
+		"url outside comment":  `/* themed */ body { background: url(x.png); }`,
+	}
+	for name, css := range cases {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateCSS(css); err == nil {
+				t.Fatalf("ValidateCSS accepted dangerous CSS %q", css)
+			}
+		})
+	}
+}
+
 func TestFinalHTMLContainingScriptIsRejected(t *testing.T) {
 	if err := ValidateHTML("<p>ok</p><script>alert(1)</script>"); err == nil {
 		t.Fatalf("ValidateHTML accepted script")

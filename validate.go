@@ -13,6 +13,8 @@ var imgSrcAttrRE = regexp.MustCompile(`(?is)\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|(
 var imgSrcsetAttrRE = regexp.MustCompile(`(?is)\bsrcset\s*=`)
 var canonicalCheckboxRE = regexp.MustCompile(`<input type="checkbox" id="cb[0-9]+" />`)
 var externalSVGRefRE = regexp.MustCompile(`(?is)<(use|image)\b[^>]*(?:href|xlink:href)\s*=\s*['"]?(https?:|//)`)
+var cssCommentRE = regexp.MustCompile(`(?s)/\*.*?(?:\*/|\z)`)
+var cssBehaviorPropertyRE = regexp.MustCompile(`(?i)(?:^|[{;\s])behavior\s*:`)
 
 func ValidateHTML(html string) error {
 	return ValidateHTMLForMode(html, "")
@@ -94,11 +96,23 @@ func imageSrc(tag string) string {
 }
 
 func ValidateCSS(css string) error {
-	lower := strings.ToLower(css)
-	for _, token := range []string{"@import", "url(", "expression(", "behavior:", "-moz-binding"} {
+	// CSS comments are inert in the browser, so strip them before scanning;
+	// otherwise a provenance note such as "no url() assets" would trip the
+	// substring checks below even though it declares nothing. Comments are
+	// replaced with a space rather than removed so they cannot splice two
+	// fragments into a token that the browser would never have parsed.
+	scan := cssCommentRE.ReplaceAllString(css, " ")
+	lower := strings.ToLower(scan)
+	for _, token := range []string{"@import", "url(", "expression(", "-moz-binding"} {
 		if strings.Contains(lower, token) {
 			return fmt.Errorf("CSS is not supported: found %s", token)
 		}
+	}
+	// Block the legacy IE `behavior:` HTC property, but only where it appears
+	// as a property name at a declaration boundary, so the standard
+	// scroll-behavior / overscroll-behavior properties remain allowed.
+	if cssBehaviorPropertyRE.MatchString(scan) {
+		return fmt.Errorf("CSS is not supported: found behavior:")
 	}
 	return nil
 }
