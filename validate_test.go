@@ -36,15 +36,17 @@ func TestCSSAllowsSafeInput(t *testing.T) {
 
 func TestCSSRejectsDangerousInput(t *testing.T) {
 	cases := map[string]string{
-		"url function":         `body { background: url(x.png); }`,
-		"import":               `@import 'x.css';`,
-		"expression":           `div { width: expression(alert(1)); }`,
-		"ie behavior with url": `body { behavior: url(evil.htc); }`,
-		"ie behavior bare":     `body { behavior: default; }`,
-		"ie behavior at start": `behavior:url(evil.htc)`,
-		"ie behavior spaced":   `body { behavior : url(evil.htc); }`,
-		"moz binding":          `a { -moz-binding: thing; }`,
-		"url outside comment":  `/* themed */ body { background: url(x.png); }`,
+		"url function":           `body { background: url(x.png); }`,
+		"import":                 `@import 'x.css';`,
+		"expression":             `div { width: expression(alert(1)); }`,
+		"ie behavior with url":   `body { behavior: url(evil.htc); }`,
+		"ie behavior bare":       `body { behavior: default; }`,
+		"ie behavior at start":   `behavior:url(evil.htc)`,
+		"ie behavior spaced":     `body { behavior : url(evil.htc); }`,
+		"ie star behavior":       `body { *behavior: default; }`,
+		"ie underscore behavior": `body { _behavior: default; }`,
+		"moz binding":            `a { -moz-binding: thing; }`,
+		"url outside comment":    `/* themed */ body { background: url(x.png); }`,
 	}
 	for name, css := range cases {
 		t.Run(name, func(t *testing.T) {

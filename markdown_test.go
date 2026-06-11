@@ -506,6 +506,28 @@ func TestMarkdownTOCCollectsSetextHeadings(t *testing.T) {
 	}
 }
 
+func TestMarkdownSetextExplicitAnchor(t *testing.T) {
+	input := "Custom Section {#custom}\n--------------------------\n\nText.\n"
+	html, toc, err := RenderMarkdownXHTMLDocument(input, nil, true)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTMLDocument: %v", err)
+	}
+	want := []TOCEntry{{Href: "#custom", Text: "Custom Section"}}
+	if !reflect.DeepEqual(toc, want) {
+		t.Fatalf("toc = %#v, want %#v", toc, want)
+	}
+	if !strings.Contains(html, `<h2 id="custom">Custom Section</h2>`) || strings.Contains(html, "{#custom}") {
+		t.Fatalf("setext heading did not render explicit anchor cleanly:\n%s", html)
+	}
+	plain, err := RenderMarkdownXHTML(input)
+	if err != nil {
+		t.Fatalf("RenderMarkdownXHTML: %v", err)
+	}
+	if !strings.Contains(plain, `<h2 id="custom">Custom Section</h2>`) || strings.Contains(plain, "{#custom}") {
+		t.Fatalf("toc-off setext explicit anchor changed:\n%s", plain)
+	}
+}
+
 func TestMarkdownTOCStripsLinkAndImageMarkupFromEntries(t *testing.T) {
 	input := "## See [docs](a.html) now\n\nText.\n\n## Shot ![tiny icon](pic.png) list\n\nMore.\n"
 	html, toc, err := RenderMarkdownXHTMLDocument(input, func(path, alt, title string) (string, error) {
@@ -538,6 +560,10 @@ func TestMarkdownTOCRejectsDuplicateAnchorsAcrossHeadingLevels(t *testing.T) {
 		"blockquoted explicit collides": {
 			input: "> ## Quoted {#x}\n\n## Top {#x}\n\nMore.\n",
 			want:  `duplicate heading anchor "x"`,
+		},
+		"setext explicit collides with auto h2": {
+			input: "Custom {#dup}\n--------------\n\n## Dup\n\nMore.\n",
+			want:  `duplicate heading anchor "dup"`,
 		},
 		"footnote checkbox namespace": {
 			input: "## Cb1\n\nText.[^1]\n\n[^1]: A note.\n",

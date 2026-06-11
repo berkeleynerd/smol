@@ -139,12 +139,12 @@ func renderMarkdownBlocks(lines []string, state *markdownRenderState) (string, e
 
 		if i+1 < len(lines) {
 			if level, ok := setextHeadingLevel(lines[i+1]); ok && strings.TrimSpace(lines[i]) != "" {
-				source := strings.TrimSpace(lines[i])
-				body, err := renderInline(source, state)
+				bodySource, id := parseHeadingID(strings.TrimSpace(lines[i]))
+				body, err := renderInline(bodySource, state)
 				if err != nil {
 					return "", err
 				}
-				id, err := collectTOCHeading(state, level, source, "")
+				id, err = collectTOCHeading(state, level, bodySource, id)
 				if err != nil {
 					return "", err
 				}
@@ -674,11 +674,7 @@ func renderATXHeading(line string, state *markdownRenderState) (string, bool, er
 		body = strings.TrimRight(body, "#")
 		body = strings.TrimSpace(body)
 	}
-	id := ""
-	if idMatch := headingIDRE.FindStringSubmatch(body); idMatch != nil {
-		body = strings.TrimSpace(idMatch[1])
-		id = idMatch[2]
-	}
+	body, id := parseHeadingID(body)
 	rendered, err := renderInline(body, state)
 	if err != nil {
 		return "", true, err
@@ -691,6 +687,13 @@ func renderATXHeading(line string, state *markdownRenderState) (string, bool, er
 		return fmt.Sprintf(`<h%d id="%s">%s</h%d>`, level, id, rendered, level), true, nil
 	}
 	return fmt.Sprintf("<h%d>%s</h%d>", level, rendered, level), true, nil
+}
+
+func parseHeadingID(body string) (string, string) {
+	if idMatch := headingIDRE.FindStringSubmatch(body); idMatch != nil {
+		return strings.TrimSpace(idMatch[1]), idMatch[2]
+	}
+	return body, ""
 }
 
 // collectTOCHeading registers heading anchors and collects TOC entries while

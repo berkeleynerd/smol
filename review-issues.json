@@ -1,0 +1,213 @@
+{
+  "review": {
+    "range": "HEAD~7..HEAD",
+    "ordered_commits": [
+      {
+        "commit": "1a665333ddc72297ee00c0f4630170e640620938",
+        "short": "1a66533",
+        "subject": "Reject raw HTML in markdown bodies for both XHTML and Gemtext output",
+        "test_result": {
+          "command": "go test ./...",
+          "status": "passed",
+          "exit_code": 0,
+          "output": "ok   \tsmol\t2.105s"
+        }
+      },
+      {
+        "commit": "865086460c6fed387b4815327ad5d5708b0a548e",
+        "short": "8650864",
+        "subject": "Harden generated TOC anchors and angle-bracket classification",
+        "test_result": {
+          "command": "go test ./...",
+          "status": "passed",
+          "exit_code": 0,
+          "output": "ok   \tsmol\t2.083s"
+        }
+      },
+      {
+        "commit": "0b41175e0d9ff8be0fb4215bd8d17aca0414fcbc",
+        "short": "0b41175",
+        "subject": "Add nav_label front-matter scalar for short generated-navigation names",
+        "test_result": {
+          "command": "go test ./...",
+          "status": "passed",
+          "exit_code": 0,
+          "output": "ok   \tsmol\t2.108s"
+        }
+      },
+      {
+        "commit": "f62e45bbe4c5e131225e0741b5547e1a266e6b40",
+        "short": "f62e45b",
+        "subject": "Suppress the redundant Up link when it targets the home page",
+        "test_result": {
+          "command": "go test ./...",
+          "status": "passed",
+          "exit_code": 0,
+          "output": "ok   \tsmol\t2.201s"
+        }
+      },
+      {
+        "commit": "0c409fbd71f288ca0b4a3c01e3cfbf5a3211b87e",
+        "short": "0c409fb",
+        "subject": "Write deterministic gzip siblings of final page bytes at build time",
+        "test_result": {
+          "command": "go test ./...",
+          "status": "passed",
+          "exit_code": 0,
+          "output": "ok   \tsmol\t2.394s"
+        }
+      },
+      {
+        "commit": "c674cfeaf7192f1b6af515be407b4669ab799a3e",
+        "short": "c674cfe",
+        "subject": "Render loose and continuing numbered lists; reject HTML entities in bodies",
+        "test_result": {
+          "command": "go test ./...",
+          "status": "passed",
+          "exit_code": 0,
+          "output": "ok   \tsmol\t2.257s"
+        }
+      },
+      {
+        "commit": "690a9da9c8162d08ac24f5faaf76e8fc76d4a9a4",
+        "short": "690a9da",
+        "subject": "validation test",
+        "test_result": {
+          "command": "go test ./...",
+          "status": "passed",
+          "exit_code": 0,
+          "output": "ok   \tsmol\t2.239s"
+        }
+      }
+    ],
+    "scope": "actionable-only",
+    "test_command": "go test ./...",
+    "created_at": "2026-06-11T21:57:52Z",
+    "updated_at": "2026-06-11T22:31:02Z"
+  },
+  "issues": [
+    {
+      "id": "SMOL-REVIEW-001",
+      "status": "open",
+      "severity": "P2",
+      "introduced_by_commit": "865086460c6fed387b4815327ad5d5708b0a548e",
+      "resolved_by_commit": null,
+      "title": "Setext TOC headings do not honor explicit {#id} anchors",
+      "category": "correctness",
+      "files": [
+        {
+          "path": "markdown.go",
+          "line": 147
+        },
+        {
+          "path": "markdown.go",
+          "line": 678
+        },
+        {
+          "path": "markdown.go",
+          "line": 701
+        }
+      ],
+      "evidence": "Commit 8650864 started collecting setext level-2 headings for generated TOCs, but the setext path calls collectTOCHeading with an empty explicit id and never applies headingIDRE. ATX headings strip {#id} before rendering and pass the parsed id; setext headings keep {#custom} in the visible heading text and derive an automatic id from it.",
+      "reproduction": "In a temporary HEAD worktree, a scratch test calling RenderMarkdownXHTMLDocument(\"Custom Section {#custom}\\n--------------------------\\n\\nText.\\n\", nil, true) produced html `<h2 id=\"custom-section-custom\">Custom Section {#custom}</h2>` and TOC href `#custom-section-custom`; expected `<h2 id=\"custom\">Custom Section</h2>` and TOC href `#custom`.",
+      "test_result": {
+        "command": "go test ./...",
+        "commit": "865086460c6fed387b4815327ad5d5708b0a548e",
+        "status": "passed",
+        "exit_code": 0,
+        "output": "ok   \tsmol\t2.083s"
+      },
+      "notes": "README originally said explicit {#id} overrides only on ATX headings, but the feature change made setext headings participate in the same generated TOC surface.",
+      "resolution": {
+        "state": "fixed_in_worktree_pending_commit",
+        "summary": "Setext headings now parse explicit {#id} anchors before rendering and TOC collection, matching ATX behavior; README wording now says ATX or setext.",
+        "verified_at": "2026-06-11T22:31:02Z",
+        "verified_with": [
+          "go test -run 'TestMarkdown(SetextExplicitAnchor|TOCRejectsDuplicateAnchorsAcrossHeadingLevels|TOCCollectsSetextHeadings)' ./...",
+          "go test ./...",
+          "go build -o smol .",
+          "jq empty review-issues.json"
+        ]
+      }
+    },
+    {
+      "id": "SMOL-REVIEW-002",
+      "status": "open",
+      "severity": "P1",
+      "introduced_by_commit": "0c409fbd71f288ca0b4a3c01e3cfbf5a3211b87e",
+      "resolved_by_commit": null,
+      "title": "Signed builds mutate output after SignHTML by writing gzip siblings",
+      "category": "spec-compliance",
+      "files": [
+        {
+          "path": "render.go",
+          "line": 219
+        },
+        {
+          "path": "render.go",
+          "line": 222
+        }
+      ],
+      "evidence": "In the signed branch, BuildSite calls SignHTML and then calls writeGzipSibling on the final signed path. That creates or replaces a .html.gz file after the attest/attested-html signing step has completed, violating the repository instruction that files must not be mutated after signing and that signing must call attest/attested-html as the final step.",
+      "reproduction": "Run a signed build, for example the existing TestSignedBuildGzipsTheSignedBytes path with a fake signer. The code signs public/index.html first, then writes public/index.html.gz afterward.",
+      "test_result": {
+        "command": "go test ./...",
+        "commit": "0c409fbd71f288ca0b4a3c01e3cfbf5a3211b87e",
+        "status": "passed",
+        "exit_code": 0,
+        "output": "ok   \tsmol\t2.394s"
+      },
+      "notes": "The gzip bytes decompress to the signed HTML, but the build still performs filesystem mutation after signing. User selected keeping signed gzip behavior despite the signing-final-step conflict.",
+      "resolution": {
+        "state": "accepted_conflict_pending_external_relay",
+        "summary": "Runtime behavior intentionally unchanged. No GitHub issue was created; relay text should be handed to the user for external discussion.",
+        "verified_at": "2026-06-11T22:31:02Z",
+        "verified_with": [
+          "go test ./...",
+          "go build -o smol .",
+          "jq empty review-issues.json"
+        ]
+      }
+    },
+    {
+      "id": "SMOL-REVIEW-003",
+      "status": "needs_triage",
+      "severity": "P2",
+      "introduced_by_commit": "690a9da9c8162d08ac24f5faaf76e8fc76d4a9a4",
+      "resolved_by_commit": null,
+      "title": "CSS behavior-property check allows legacy-prefixed behavior declarations",
+      "category": "security",
+      "files": [
+        {
+          "path": "validate.go",
+          "line": 17
+        },
+        {
+          "path": "validate.go",
+          "line": 114
+        }
+      ],
+      "evidence": "Commit 690a9da narrowed behavior detection to the regex `(?:^|[{;\\s])behavior\\s*:` so safe properties like scroll-behavior are allowed. That regex does not match legacy-prefixed declarations such as `*behavior:` or `_behavior:`, even though the code comment says it is blocking the legacy IE behavior HTC property.",
+      "reproduction": "In a temporary HEAD worktree, a scratch test asserting ValidateCSS(`*behavior: default;`) and ValidateCSS(`_behavior: default;`) should fail instead observed ValidateCSS accepting `*behavior: default;`.",
+      "test_result": {
+        "command": "go test ./...",
+        "commit": "690a9da9c8162d08ac24f5faaf76e8fc76d4a9a4",
+        "status": "passed",
+        "exit_code": 0,
+        "output": "ok   \tsmol\t2.239s"
+      },
+      "notes": "Modern browsers ignore these legacy CSS hacks, but this validator explicitly targets the legacy IE behavior property.",
+      "resolution": {
+        "state": "fixed_in_worktree_pending_commit",
+        "summary": "CSS validation now rejects *behavior: and _behavior: declarations while preserving scroll-behavior and overscroll-behavior.",
+        "verified_at": "2026-06-11T22:31:02Z",
+        "verified_with": [
+          "go test -run 'TestCSS(AllowsSafeInput|RejectsDangerousInput)' ./...",
+          "go test ./...",
+          "go build -o smol .",
+          "jq empty review-issues.json"
+        ]
+      }
+    }
+  ]
+}

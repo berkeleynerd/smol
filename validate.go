@@ -14,7 +14,7 @@ var imgSrcsetAttrRE = regexp.MustCompile(`(?is)\bsrcset\s*=`)
 var canonicalCheckboxRE = regexp.MustCompile(`<input type="checkbox" id="cb[0-9]+" />`)
 var externalSVGRefRE = regexp.MustCompile(`(?is)<(use|image)\b[^>]*(?:href|xlink:href)\s*=\s*['"]?(https?:|//)`)
 var cssCommentRE = regexp.MustCompile(`(?s)/\*.*?(?:\*/|\z)`)
-var cssBehaviorPropertyRE = regexp.MustCompile(`(?i)(?:^|[{;\s])behavior\s*:`)
+var cssBehaviorPropertyRE = regexp.MustCompile(`(?i)(?:^|[{;\s])[*_]?behavior\s*:`)
 
 func ValidateHTML(html string) error {
 	return ValidateHTMLForMode(html, "")
