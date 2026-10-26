@@ -527,7 +527,7 @@ if [ ` + exit + ` -ne 0 ]; then
   exit ` + exit + `
 fi
 cp "$7" "$5"
-printf '\nFAKE-SIGNED key=%s\n' "$3" >> "$5"
+printf '\n<!--FAKE-SIGNED key=%s-->\n' "$3" >> "$5"
 `
 	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatalf("WriteFile(fake signer): %v", err)
@@ -555,7 +555,7 @@ func main() {
 	if err != nil {
 		os.Exit(8)
 	}
-	if err := os.WriteFile(os.Args[5], append(input, []byte("\nTINY-SIGNED\n")...), 0644); err != nil {
+	if err := os.WriteFile(os.Args[5], append(input, []byte("\n<!--TINY-SIGNED-->\n")...), 0644); err != nil {
 		os.Exit(7)
 	}
 }

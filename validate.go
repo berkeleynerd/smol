@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -11,16 +12,14 @@ var externalLinkRE = regexp.MustCompile(`(?is)<link\s+[^>]*rel\s*=\s*['"]?(style
 var imgTagRE = regexp.MustCompile(`(?is)<img\b[^>]*>`)
 var imgSrcAttrRE = regexp.MustCompile(`(?is)\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
 var imgSrcsetAttrRE = regexp.MustCompile(`(?is)\bsrcset\s*=`)
-var canonicalCheckboxRE = regexp.MustCompile(`<input type="checkbox" id="cb[0-9]+" />`)
+var checkboxIDRE = regexp.MustCompile(`^cb[0-9]+$`)
+var cssEscapeRE = regexp.MustCompile(`\\(?:[0-9a-fA-F]{1,6}[\t\n\r\f ]?|\r\n|[\s\S])`)
+var cssResourceFunctionRE = regexp.MustCompile(`(?i)(?:url|image|image-set|-webkit-image-set|src|paint|element)\s*\(`)
 var externalSVGRefRE = regexp.MustCompile(`(?is)<(use|image)\b[^>]*(?:href|xlink:href)\s*=\s*['"]?(https?:|//)`)
 var cssCommentRE = regexp.MustCompile(`(?s)/\*.*?(?:\*/|\z)`)
 var cssBehaviorPropertyRE = regexp.MustCompile(`(?i)(?:^|[{;\s])[*_]?behavior\s*:`)
 
 func ValidateHTML(html string) error {
-	return ValidateHTMLForMode(html, "")
-}
-
-func ValidateHTMLForMode(html, outputMode string) error {
 	jsTokens := []string{"<script", "</script", "javascript:"}
 	lower := strings.ToLower(html)
 	for _, token := range jsTokens {
@@ -33,18 +32,6 @@ func ValidateHTMLForMode(html, outputMode string) error {
 		if strings.Contains(lower, token) {
 			return fmt.Errorf("interactive HTML is not supported: found %s", token)
 		}
-	}
-	if strings.Contains(lower, "<input") {
-		if outputMode != outputModeFlatXHTML {
-			return fmt.Errorf("interactive HTML is not supported: found <input")
-		}
-		withoutCheckboxes := canonicalCheckboxRE.ReplaceAllString(html, "")
-		if strings.Contains(strings.ToLower(withoutCheckboxes), "<input") {
-			return fmt.Errorf("interactive HTML is not supported: found non-canonical <input")
-		}
-	}
-	if strings.Contains(lower, "<svg") && outputMode != outputModeFlatXHTML {
-		return fmt.Errorf("inline SVG is not supported: found <svg")
 	}
 	if strings.Contains(lower, `<meta http-equiv="refresh"`) {
 		return fmt.Errorf(`automatic navigation is not supported: found <meta http-equiv="refresh"`)
@@ -66,7 +53,7 @@ func ValidateHTMLForMode(html, outputMode string) error {
 			return fmt.Errorf("external resources are not supported: found %s", token)
 		}
 	}
-	return nil
+	return validateXML(html, strings.Contains(lower, "<html"))
 }
 
 func validateEmbeddedImages(html string) error {
@@ -101,8 +88,24 @@ func ValidateCSS(css string) error {
 	// substring checks below even though it declares nothing. Comments are
 	// replaced with a space rather than removed so they cannot splice two
 	// fragments into a token that the browser would never have parsed.
+	if strings.Contains(strings.ToLower(css), "</style") {
+		return fmt.Errorf("CSS cannot close the HTML style boundary")
+	}
+	if strings.Contains(css, "]]>") {
+		return fmt.Errorf("CSS cannot close the XML CDATA boundary")
+	}
 	scan := cssCommentRE.ReplaceAllString(css, " ")
+	scan = cssEscapeRE.ReplaceAllStringFunc(scan, func(escape string) string {
+		value := strings.TrimSpace(escape[1:])
+		if n, err := strconv.ParseInt(value, 16, 32); err == nil && len(value) <= 6 {
+			return string(rune(n))
+		}
+		return strings.TrimLeft(escape[1:], "\r\n\f")
+	})
 	lower := strings.ToLower(scan)
+	if cssResourceFunctionRE.MatchString(lower) {
+		return fmt.Errorf("CSS is not supported: found resource-loading function")
+	}
 	for _, token := range []string{"@import", "url(", "expression(", "-moz-binding"} {
 		if strings.Contains(lower, token) {
 			return fmt.Errorf("CSS is not supported: found %s", token)

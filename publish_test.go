@@ -96,11 +96,15 @@ func TestPublishRejectsInvalidRemotePaths(t *testing.T) {
 func TestPublishNoBuildRunsExpectedSSHAndSCPCommands(t *testing.T) {
 	dir := testSite(t)
 	writePublishConfig(t, dir, "example.org", "deploy", 2222, "/var/www/example")
-	writeText(t, filepath.Join(dir, "public", "index.html"), "ready\n")
+	tool, _ := configurePublishSigning(t, dir)
+	if err := BuildSite(BuildOptions{SiteDir: dir, AttestPath: tool}); err != nil {
+		t.Fatal(err)
+	}
 	runner := &recordingPublishRunner{}
 	var out strings.Builder
 	if err := PublishSite(PublishOptions{
 		SiteDir:       dir,
+		AttestPath:    tool,
 		NoBuild:       true,
 		Stdout:        &out,
 		commandRunner: runner,
@@ -120,7 +124,7 @@ func TestPublishNoBuildRunsExpectedSSHAndSCPCommands(t *testing.T) {
 	if scp.Name != "scp" || len(scp.Args) != 5 || scp.Args[0] != "-P" || scp.Args[1] != "2222" || scp.Args[2] != "-r" {
 		t.Fatalf("scp command = %#v", scp)
 	}
-	if scp.Args[3] != filepath.Join(dir, "public")+string(filepath.Separator)+"." || scp.Args[4] != "deploy@example.org:/var/www/.example.smol-upload" {
+	if scp.Args[3] == filepath.Join(dir, "public")+string(filepath.Separator)+"." || !strings.HasSuffix(scp.Args[3], string(filepath.Separator)+".") || scp.Args[4] != "deploy@example.org:/var/www/.example.smol-upload" {
 		t.Fatalf("scp args = %#v", scp.Args)
 	}
 	if runner.commands[2].Name != "ssh" || !strings.Contains(runner.commands[2].Stdin, "mv \"$stage\" \"$target\"") || !strings.Contains(runner.commands[2].Stdin, "/var/www/.example.smol-backup") {
@@ -134,6 +138,7 @@ func TestPublishNoBuildRunsExpectedSSHAndSCPCommands(t *testing.T) {
 func TestPublishBuildsBeforePublishingByDefault(t *testing.T) {
 	dir := testSite(t)
 	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	tool, _ := configurePublishSigning(t, dir)
 	runner := &recordingPublishRunner{
 		onRun: func(command publishCommand) error {
 			if _, err := os.Stat(filepath.Join(dir, "public", "index.html")); err != nil {
@@ -144,6 +149,7 @@ func TestPublishBuildsBeforePublishingByDefault(t *testing.T) {
 	}
 	if err := PublishSite(PublishOptions{
 		SiteDir:       dir,
+		AttestPath:    tool,
 		commandRunner: runner,
 	}); err != nil {
 		t.Fatalf("PublishSite: %v", err)
@@ -156,27 +162,23 @@ func TestPublishBuildsBeforePublishingByDefault(t *testing.T) {
 func TestPublishPassesSignKeyOverrideToBuild(t *testing.T) {
 	dir := testSite(t)
 	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	tool, key := configurePublishSigning(t, dir)
 	var got BuildOptions
 	runner := &recordingPublishRunner{}
 	if err := PublishSite(PublishOptions{
 		SiteDir:       dir,
-		SignKey:       "CLI-KEY",
+		AttestPath:    tool,
+		SignKey:       key,
 		SignKeySource: true,
 		commandRunner: runner,
 		buildSite: func(opts BuildOptions) error {
 			got = opts
-			return BuildSite(BuildOptions{
-				SiteDir:  opts.SiteDir,
-				OutDir:   opts.OutDir,
-				Unsigned: true,
-				Force:    opts.Force,
-				Stdout:   opts.Stdout,
-			})
+			return BuildSite(opts)
 		},
 	}); err != nil {
 		t.Fatalf("PublishSite: %v", err)
 	}
-	if got.SignKey != "CLI-KEY" || !got.SignKeySource {
+	if got.SignKey != key || !got.SignKeySource {
 		t.Fatalf("build options SignKey=%q SignKeySource=%v, want CLI override", got.SignKey, got.SignKeySource)
 	}
 	if len(runner.commands) != 3 {
@@ -187,6 +189,7 @@ func TestPublishPassesSignKeyOverrideToBuild(t *testing.T) {
 func TestPublishBuildCleansOutputBeforePublishing(t *testing.T) {
 	dir := testSite(t)
 	writePublishConfig(t, dir, "example.org", "", 22, "/srv/site")
+	tool, _ := configurePublishSigning(t, dir)
 	stalePath := filepath.Join(dir, "public", "stale.html")
 	writeText(t, stalePath, "stale\n")
 	runner := &recordingPublishRunner{
@@ -202,6 +205,7 @@ func TestPublishBuildCleansOutputBeforePublishing(t *testing.T) {
 	}
 	if err := PublishSite(PublishOptions{
 		SiteDir:       dir,
+		AttestPath:    tool,
 		commandRunner: runner,
 	}); err != nil {
 		t.Fatalf("PublishSite: %v", err)

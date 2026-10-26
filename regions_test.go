@@ -312,8 +312,8 @@ func TestFlatOutputsDoNotCarryManifestRegions(t *testing.T) {
 	}
 	buildSite(t, classicDir)
 	classicHTML := readText(t, filepath.Join(classicDir, "public", "sample.html"))
-	if containsManifest(classicHTML) || strings.Contains(classicHTML, `"regions"`) {
-		t.Fatalf("flat XHTML output carried manifest regions:\n%s", classicHTML)
+	if !containsManifest(classicHTML) {
+		t.Fatalf("XHTML output lacks manifest:\n%s", classicHTML)
 	}
 
 	geminiDir := geminiSite(t, "")

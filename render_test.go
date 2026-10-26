@@ -181,7 +181,7 @@ func TestCSSIsInlined(t *testing.T) {
 	dir := testSite(t)
 	buildSite(t, dir)
 	html := readText(t, filepath.Join(dir, "public", "index.html"))
-	if !strings.Contains(html, "<style>\nbody {") {
+	if !strings.Contains(html, "<style>\n/*<![CDATA[*/\nbody {") {
 		t.Fatalf("generated HTML did not inline CSS:\n%s", html)
 	}
 }
@@ -273,7 +273,7 @@ func TestClassicXHTMLStarterBuildsFlatPages(t *testing.T) {
 		t.Fatalf("classic-xhtml should not generate nested about/index.html: %v", err)
 	}
 	html := readText(t, filepath.Join(dir, "public", "sample.html"))
-	if !strings.Contains(html, `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"`) {
+	if !strings.Contains(html, `<!DOCTYPE html>`) {
 		t.Fatalf("sample output missing XHTML doctype:\n%s", html)
 	}
 	for _, want := range []string{

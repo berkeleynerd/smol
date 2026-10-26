@@ -7,9 +7,12 @@ import (
 )
 
 func routeFor(kind, slug, outputMode string) string {
-	if outputMode == outputModeFlatXHTML {
+	if outputMode == routingFlat {
 		if slug == "index" {
 			return "/"
+		}
+		if kind == "post" {
+			return "/posts/" + slug + ".html"
 		}
 		return "/" + slug + ".html"
 	}
@@ -83,7 +86,7 @@ func hrefPathForRoute(route, outputMode string, asFile bool) string {
 		return "index.html"
 	}
 	trimmed := strings.Trim(route, "/")
-	if outputMode == outputModeFlatXHTML || strings.HasSuffix(trimmed, ".html") {
+	if outputMode == routingFlat || strings.HasSuffix(trimmed, ".html") {
 		return trimmed
 	}
 	if outputMode == outputModeFlatGemini || strings.HasSuffix(trimmed, ".gmi") {

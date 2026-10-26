@@ -67,7 +67,7 @@ func TestInitClassicXHTMLCreatesExpectedStructure(t *testing.T) {
 		t.Fatalf("classic-xhtml should not create a separate kore page: %v", err)
 	}
 	site := readText(t, filepath.Join(dir, "smol.json"))
-	if !strings.Contains(site, `"output_mode": "flat-xhtml-v1"`) || !strings.Contains(site, `"theme": "classic-xhtml"`) {
+	if !strings.Contains(site, `"output_mode": "xhtml5"`) || !strings.Contains(site, `"theme": "classic-xhtml"`) {
 		t.Fatalf("classic smol.json missing flat mode/theme:\n%s", site)
 	}
 	indexMeta, _ := readContentSource(t, filepath.Join(dir, "content", "pages", "index.md"))
@@ -180,17 +180,17 @@ func TestNewPostInFlatGeminiIsRejected(t *testing.T) {
 	}
 }
 
-func TestNewPostInFlatXHTMLIsRejected(t *testing.T) {
+func TestNewPostWithFlatRouting(t *testing.T) {
 	dir := t.TempDir()
 	if err := InitSiteWithStarter(dir, starterClassicXHTML); err != nil {
-		t.Fatalf("InitSiteWithStarter classic-xhtml: %v", err)
+		t.Fatal(err)
 	}
-	err := NewContent(dir, "post", "hello-world", "Hello World")
-	if err == nil {
-		t.Fatalf("NewContent post accepted flat-xhtml site")
+	if err := NewContent(dir, "post", "hello", "Hello"); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "flat-xhtml-v1 supports pages only") {
-		t.Fatalf("unexpected error: %v", err)
+	buildSite(t, dir)
+	if _, err := os.Stat(filepath.Join(dir, "public", "posts", "hello.html")); err != nil {
+		t.Fatal(err)
 	}
 }
 

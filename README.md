@@ -1,21 +1,22 @@
 # smol
 
 `smol` is the reference generator for the Attested HTML Static No-JS Profile.
-It builds minimal, self-contained static HTML pages that are ready to be signed
+It builds minimal, self-contained XHTML5 pages that are ready to be signed
 byte-for-byte with `attest` / `attested-html`. It can also emit flat Gemini
 capsules from Gemtext or Markdown source.
 
 ## What it does
 
 - Creates small static sites with pages, posts, partials, assets, and theme config.
-- Emits single-file HTML with inline CSS.
+- Emits XHTML5 as the default and only HTML format, with inline CSS.
+- Rejects malformed XML, incompatible HTML structure, and unsupported static markup.
 - Emits flat Gemini capsules from `gemtext-v1` and `markdown-xhtml-v1` pages.
 - Embeds supported local images as `data:` URLs through `{{image}}` and Markdown images.
 - Renders constrained Markdown/XHTML and Gemtext source bodies for HTML output.
 - Checks already-built HTML/XHTML/Gemini output against the static no-JS profile.
-- Adds a `SMOL ATTESTED MANIFEST V1` comment to nested HTML output inside the
-  signed payload, including embedded resource provenance and byte-exact region
-  hashes for drift checks.
+- Provides a `SMOL ATTESTED MANIFEST V1` comment to both starter themes inside
+  the signed payload, with resource provenance and region hashes for drift checks.
+  Custom themes may omit it; authorship verification needs no manifest.
 - Automatically calls `attest` / `attested-html sign` as the final build step
   when a signing key is configured and a signer is discoverable.
 
@@ -23,12 +24,13 @@ capsules from Gemtext or Markdown source.
 
 - No JavaScript.
 - No broad CommonMark/GFM in v0; only constrained `markdown-xhtml-v1` and `gemtext-v1` source formats.
-- No third-party packages, plugins, arbitrary hooks, or client-side routing.
+- No plugins, arbitrary hooks, or client-side routing. The HTML structure check
+  uses `golang.org/x/net/html`; signing remains in the separate `attest` tool.
 - No external stylesheets, scripts, fonts, iframes, forms, embeds, or remote image fetching.
 - No Publii theme rendering and no Handlebars support.
 - No cryptographic signing implementation inside `smol`.
-- No strict historical XHTML DTD conformance; XHTML-style output is used for
-  consistent static markup and closing discipline, not DTD purity.
+- Targets XHTML5, with well-formed XML and HTML-compatible syntax. Historical
+  XHTML 1.1 DTDs and external entity declarations are unsupported.
 
 ## Install
 
@@ -53,7 +55,7 @@ smol new post hello-world "Hello World"
 smol build
 smol check public
 smol publish --dry-run
-smol publish
+smol publish --sign
 smol build --sign
 smol build --sign-key FINGERPRINT
 ```
@@ -111,12 +113,35 @@ public/
 ```
 
 Optional fields include `description`, `language`, `publisher`, `theme`,
-`output_mode`, `sign_key`, `nav`, and `publish`. If `--sign-key` is supplied,
+`output_mode`, `routing`, `sign_key`, `nav`, and `publish`. If `--sign-key` is supplied,
 it overrides `sign_key` in `smol.json`. Use `--sign` to choose a local GPG
 secret key interactively for a single build or publish run. Use `--unsigned` to
 suppress signing even when a key is configured or selected. The signing key
 value is a fingerprint or key ID, not a secret, but private signing keys should
 not be placed in cloud workspaces.
+
+## XHTML5 output
+
+`output_mode` defaults to `"xhtml5"`, the only HTML output format. `routing`
+selects `"directory"` (default: `/about/index.html`) or `"flat"` (`/about.html`);
+posts use `/posts/<slug>/index.html` or `/posts/<slug>.html`. Both choices use
+identical XHTML5 and static-resource validation. Gemini is a separate format.
+
+Every generated page must be well-formed UTF-8 XML with `<!DOCTYPE html>`, an
+`html` root in `http://www.w3.org/1999/xhtml`, one `head` with a `title`, and one
+`body`. XML and HTML parsing must agree on structure and text; static content
+models are checked as well. Ordinary elements need explicit closing tags;
+void elements use `<img … />`, `<br />`, etc. Attributes must be quoted, and
+boolean attributes need values, such as `open="open"`. Use Unicode, numeric
+references, or XML's predefined entities (`&amp;`, `&lt;`, `&gt;`, `&quot;`,
+`&apos;`), rather than HTML-only named entities such as `&nbsp;`.
+
+The inline stylesheet is wrapped in CSS-commented CDATA boundaries, preserving
+characters such as `&` and `<` under either XML or HTML parsing. XML declarations,
+processing instructions, external DTDs, and entity declarations are rejected.
+The final signature is an XML-safe comment after the root element. Both the
+unsigned document and the signer's final output are validated in staging;
+validation or signing failure preserves existing output.
 
 ## Content
 
@@ -352,16 +377,15 @@ static no-JS profile:
 
 ```sh
 smol check public
-smol check --mode flat-xhtml-v1 public
+smol check --mode xhtml5 public
 smol check --mode flat-gemini-v1 public
 ```
 
-The default mode applies the strict nested HTML policy to `.html` and `.xhtml`
-files. Use `--mode flat-xhtml-v1` for flat XHTML output and
-`--mode flat-gemini-v1` for Gemini capsule output. `.gmi` files are validated as
-Gemtext. `smol check` validates static policy, inline CSS, manifest
-well-formedness, and declared manifest region hashes when a manifest is present;
-it does not verify cryptographic signatures.
+The default `xhtml5` mode checks `.html`, `.htm`, and `.xhtml` files using the
+same XML, HTML structure, and static-resource policy for both route layouts.
+Use `--mode flat-gemini-v1` for Gemini. `.gmi` files are validated as Gemtext.
+`smol check` also validates manifest syntax and declared region hashes when a
+manifest is present. It does not verify cryptographic signatures.
 
 ## Publishing
 
@@ -396,14 +420,24 @@ smol publish --dry-run
 smol publish --host example.org --user deploy --port 2222 --path /var/www/example
 ```
 
-By default, `smol publish` performs a clean build of the local output directory,
-uploads that directory to a temporary sibling path on the remote host, then
-swaps it into place. The remote target is replaced rather than overlaid, so
-files removed from the local output disappear remotely. `--no-build` skips the
-build and publishes the existing output directory. `--sign-key` overrides
-`smol.json.sign_key` for the build phase. `--sign` chooses a key interactively
-for the build phase. `--unsigned` applies only to the build phase and wins over
-configured, CLI, and interactive signing keys.
+HTML publication requires a full expected signing-key fingerprint in
+`smol.json.sign_key` or `--sign-key`. `--sign` chooses a local key for the build.
+Unsigned HTML remains available for local previews; `--unsigned` cannot publish
+HTML. `--no-build` verifies existing pages against the configured fingerprint;
+it cannot run signing or accept `--sign` / `--sign-key`.
+
+The default publish builds finalized pages, makes a private output snapshot,
+and validates every page's XML, static-resource policy, and embedded OpenPGP
+signature with `attest verify --trusted FINGERPRINT`. Each gzip sibling must
+decompress to its matching signed page. Symlinks and special files are rejected.
+Only that verified snapshot is uploaded. The remote host checks SHA-256 hashes
+of the uploaded files before replacing the live directory, using `sha256sum`,
+OpenBSD `sha256`, or `shasum`. A failed check leaves the live site in place.
+`--attest PATH` selects the signer/verifier. Gemini publication retains its
+separate unsigned behavior.
+
+`--dry-run` previews commands without building, verifying signatures, or
+connecting to the host; it does not certify an output directory as publishable.
 
 ## Signing
 
@@ -435,7 +469,7 @@ Unsigned builds write finalized HTML to `public/` when no signing key is
 configured, supplied, or selected with `--sign`, or when `--unsigned` is
 passed. `--unsigned` wins over `smol.json.sign_key`, `--sign-key`, and
 interactive signing, which is useful for CI or local preview builds where
-signing should be skipped:
+signing should be skipped (these builds cannot be published as HTML):
 
 ```sh
 smol build
@@ -466,7 +500,7 @@ signed builds, the bytes after the attestation trailer is appended — so
 static servers configured for precompressed content (OpenBSD httpd
 `gzip-static`, nginx `gzip_static on;`) can serve the smaller file while
 clients decompress to exactly the attested page. `smol check` ignores the
-`.gz` siblings, and `flat-gemini-v1` capsules do not emit them.
+`.gz` siblings; `smol publish` verifies that they match the signed pages, and `flat-gemini-v1` capsules do not emit them.
 
 Explicit `--attest` or `--attested-html` paths win. If no explicit signer path
 is supplied, `smol` searches `PATH` for `attest`, then `attested-html`. It then
@@ -482,8 +516,8 @@ dependencies in `go.mod` are rejected to avoid unexpected dependency fetches.
 SIGNER sign -k SIGNING_KEY -o OUTPUT.html --force INPUT.html
 ```
 
-It does not duplicate signing logic and does not modify signed output after
-the signer writes it. The final filenames stay as normal `.html` paths; `smol`
+It validates the final signed document without rewriting its bytes. It does
+not duplicate signing logic or modify output after the signer writes it. The final filenames stay as normal `.html` paths; `smol`
 does not emit separate `.attested.html` files.
 
 Signed HTML is byte-sensitive. Git line-ending normalization can break

@@ -100,7 +100,7 @@ func TestFinalHTMLContainingExternalImageReferencesIsRejected(t *testing.T) {
 }
 
 func TestFinalHTMLAllowsEmbeddedImageDataURL(t *testing.T) {
-	if err := ValidateHTML(`<img src="data:image/png;base64,AA==" alt="x">`); err != nil {
+	if err := ValidateHTML(`<img src="data:image/png;base64,AA==" alt="x" />`); err != nil {
 		t.Fatalf("ValidateHTML rejected embedded image: %v", err)
 	}
 }
@@ -127,41 +127,41 @@ func TestExternalAnchorLinksAreAllowed(t *testing.T) {
 	}
 }
 
-func TestDefaultHTMLRejectsSVG(t *testing.T) {
-	if err := ValidateHTML(`<svg role="img"><title>Clean</title></svg>`); err == nil {
-		t.Fatalf("ValidateHTML accepted SVG in default mode")
+func TestXHTMLAllowsSVG(t *testing.T) {
+	if err := ValidateHTML(`<svg xmlns="http://www.w3.org/2000/svg" role="img"><title>Clean</title></svg>`); err != nil {
+		t.Fatalf("ValidateHTML rejected clean namespaced SVG")
 	}
 }
 
-func TestFlatXHTMLAllowsCanonicalCheckbox(t *testing.T) {
+func TestXHTMLAllowsFootnoteCheckbox(t *testing.T) {
 	html := `<span><input type="checkbox" id="cb12" /><label for="cb12"><sup>12</sup></label><span>Note.</span></span>`
-	if err := ValidateHTMLForMode(html, outputModeFlatXHTML); err != nil {
-		t.Fatalf("ValidateHTMLForMode rejected canonical checkbox: %v", err)
+	if err := ValidateHTML(html); err != nil {
+		t.Fatalf("ValidateHTML rejected canonical checkbox: %v", err)
 	}
 }
 
-func TestFlatXHTMLRejectsMalformedCheckbox(t *testing.T) {
+func TestXHTMLAllowsReorderedCheckboxAttributes(t *testing.T) {
 	html := `<input id="cb12" type="checkbox" />`
-	if err := ValidateHTMLForMode(html, outputModeFlatXHTML); err == nil {
-		t.Fatalf("ValidateHTMLForMode accepted malformed checkbox")
+	if err := ValidateHTML(html); err != nil {
+		t.Fatalf("ValidateHTML rejected reordered checkbox attributes: %v", err)
 	}
 }
 
-func TestDefaultHTMLRejectsCanonicalCheckbox(t *testing.T) {
+func TestXHTMLAllowsCanonicalCheckbox(t *testing.T) {
 	html := `<input type="checkbox" id="cb12" />`
-	if err := ValidateHTML(html); err == nil {
-		t.Fatalf("ValidateHTML accepted checkbox in default mode")
+	if err := ValidateHTML(html); err != nil {
+		t.Fatalf("ValidateHTML rejected checkbox: %v", err)
 	}
 }
 
-func TestFlatXHTMLAllowsCleanSVG(t *testing.T) {
-	html := `<svg role="img" viewBox="0 0 1 1"><title>Clean</title><path d="M0 0h1v1z"/></svg>`
-	if err := ValidateHTMLForMode(html, outputModeFlatXHTML); err != nil {
-		t.Fatalf("ValidateHTMLForMode rejected clean SVG: %v", err)
+func TestXHTMLAllowsCleanSVG(t *testing.T) {
+	html := `<svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 1 1"><title>Clean</title><path d="M0 0h1v1z"/></svg>`
+	if err := ValidateHTML(html); err != nil {
+		t.Fatalf("ValidateHTML rejected clean SVG: %v", err)
 	}
 }
 
-func TestFlatXHTMLRejectsUnsafeSVG(t *testing.T) {
+func TestXHTMLRejectsUnsafeSVG(t *testing.T) {
 	tests := map[string]string{
 		"event":        `<svg onload="alert(1)"></svg>`,
 		"script":       `<svg><script>alert(1)</script></svg>`,
@@ -170,8 +170,8 @@ func TestFlatXHTMLRejectsUnsafeSVG(t *testing.T) {
 	}
 	for name, html := range tests {
 		t.Run(name, func(t *testing.T) {
-			if err := ValidateHTMLForMode(html, outputModeFlatXHTML); err == nil {
-				t.Fatalf("ValidateHTMLForMode accepted unsafe SVG")
+			if err := ValidateHTML(html); err == nil {
+				t.Fatalf("ValidateHTML accepted unsafe SVG")
 			}
 		})
 	}

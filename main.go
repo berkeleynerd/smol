@@ -190,7 +190,7 @@ func commandCheck(args []string, stdout io.Writer) error {
 		return usageError{formatFlagParseError(err, args)}
 	}
 	if fs.NArg() != 1 {
-		return usageError{"usage: smol check [--mode default|flat-xhtml-v1|flat-gemini-v1] PATH"}
+		return usageError{"usage: smol check [--mode xhtml5|flat-gemini-v1] PATH"}
 	}
 	if _, err := normalizeCheckMode(*mode); err != nil {
 		return usageError{err.Error()}
@@ -209,7 +209,7 @@ func commandPublish(args []string, stdout io.Writer) error {
 var runPublishSite = PublishSite
 
 func commandPublishWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, interactive bool) error {
-	if flagsAppearAfterPositionals(args, "out", "sign-key", "host", "user", "port", "path") {
+	if flagsAppearAfterPositionals(args, "out", "sign-key", "host", "user", "port", "path", "attest") {
 		return usageError{"options must appear before positional arguments"}
 	}
 
@@ -217,6 +217,7 @@ func commandPublishWithIO(args []string, stdin io.Reader, stdout, stderr io.Writ
 	fs.SetOutput(io.Discard)
 	out := fs.String("out", "public", "output directory")
 	noBuild := fs.Bool("no-build", false, "publish existing output without building")
+	attestPath := fs.String("attest", "", "attest signer/verifier binary")
 	sign := fs.Bool("sign", false, "interactively choose a signing key")
 	signKey := fs.String("sign-key", "", "signing key fingerprint")
 	unsigned := fs.Bool("unsigned", false, "build unsigned output even when sign_key is configured")
@@ -273,6 +274,7 @@ func commandPublishWithIO(args []string, stdin io.Reader, stdout, stderr io.Writ
 		return err
 	}
 	err = runPublishSite(PublishOptions{
+		AttestPath:    *attestPath,
 		SiteDir:       siteDir,
 		OutDir:        *out,
 		NoBuild:       *noBuild,
@@ -628,18 +630,19 @@ Build options:
   --attest PATH             Path to attest signer binary. Default: auto-discover.
   --attested-html PATH      Backward-compatible signer binary alias.
   --unsigned                Build unsigned HTML even when sign_key is configured.
-  --force                   Remove existing output directory before build.
+  --force                   Replace output after validation and signing.
 
 Check options:
-  --mode MODE               Check mode: default, flat-xhtml-v1, or flat-gemini-v1.
-                            Default: default.
+  --mode MODE               Check mode: xhtml5 or flat-gemini-v1.
+                            Default: xhtml5.
 
 Publish options:
   --out DIR                 Output directory. Default: public.
   --no-build                Publish existing output without building.
   --sign                    Interactively choose a signing key during the build phase.
-  --sign-key FINGERPRINT    Sign generated pages during the build phase.
-  --unsigned                Build unsigned output even when sign_key is configured.
+  --sign-key FINGERPRINT    Full expected signing fingerprint; signs during build.
+  --attest PATH             Path to attest signer/verifier. Default: auto-discover.
+  --unsigned                Unsigned Gemini only; HTML publication requires signatures.
   --host HOST               SSH host override.
   --user USER               SSH user override.
   --port PORT               SSH port override.

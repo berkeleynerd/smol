@@ -11,7 +11,7 @@ fixtures are in this tier. The same navigation failures are also covered through
 
 Reference output-shape fixtures use shipped smol starters plus fixture overlays.
 They check byte boundaries, generated navigation placement, route-relative
-links, manifest region provenance, manifest absence in flat modes, and Gemini
+links, manifest region provenance, manifest emission in both XHTML route layouts, and Gemini
 capsule shape. These fixtures are intentionally smol-reference-specific.
 
 Check fixtures use `action: "check"` to verify already-built output through the

@@ -94,7 +94,7 @@ func BuildSite(opts BuildOptions) error {
 		return buildGeminiCapsule(siteDir, siteCfg, opts)
 	}
 	themeDir := filepath.Join(siteDir, "themes", siteCfg.Theme)
-	themeCfg, err := LoadThemeConfigForMode(themeDir, siteCfg.OutputMode)
+	themeCfg, err := LoadThemeConfig(themeDir)
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func BuildSite(opts BuildOptions) error {
 	if err != nil {
 		return err
 	}
-	pages, posts, err = resolvePageNavigations(pages, posts, siteCfg.OutputMode)
+	pages, posts, err = resolvePageNavigations(pages, posts, siteCfg.routeStyle())
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func BuildSite(opts BuildOptions) error {
 		if err := validateNoReservedRegionMarkers(page, rendered); err != nil {
 			return err
 		}
-		if err := ValidateHTMLForMode(rendered, siteCfg.OutputMode); err != nil {
+		if err := ValidateHTML(rendered); err != nil {
 			return err
 		}
 		page.ContentHTML = template.HTML(rendered)
@@ -162,7 +162,7 @@ func BuildSite(opts BuildOptions) error {
 			Smol: SmolView{
 				Version:                  Version,
 				Profile:                  Profile,
-				InlineCSS:                template.CSS(css),
+				InlineCSS:                template.CSS("/*<![CDATA[*/\n" + css + "\n/*]]>*/"),
 				AuthoredContentOpen:      template.HTML(authoredContentOpen),
 				AuthoredContentClose:     template.HTML(authoredContentClose),
 				GeneratedNavigationOpen:  template.HTML(generatedNavigationOpen),
@@ -170,15 +170,14 @@ func BuildSite(opts BuildOptions) error {
 			},
 		}
 		var html string
-		if siteCfg.OutputMode == outputModeFlatXHTML {
-			html, err = renderFullPage(themeDir, themeCfg, page.Kind, page.Slug, root)
-		} else {
-			html, err = renderNestedPage(themeDir, themeCfg, site, page, resources, root)
-		}
+		html, err = renderXHTMLPage(themeDir, themeCfg, site, page, resources, root)
 		if err != nil {
 			return err
 		}
-		if err := ValidateHTMLForMode(html, siteCfg.OutputMode); err != nil {
+		if err := CheckHTML(html); err != nil {
+			return err
+		}
+		if err := ValidateXHTMLDocument(html); err != nil {
 			return err
 		}
 		tempPath := outputPathFor(tempDir, page.URL)
@@ -193,36 +192,51 @@ func BuildSite(opts BuildOptions) error {
 		})
 	}
 
+	// Finish and validate every signed document in staging before replacing any
+	// existing output. A signer must not introduce non-XML bytes or markup.
+	for i := range results {
+		result := &results[i]
+		if opts.SignKey != "" {
+			signedPath := result.tempPath + ".signed"
+			if err := SignHTML(attestTool, opts.SignKey, result.tempPath, signedPath); err != nil {
+				return err
+			}
+			data, err := os.ReadFile(signedPath)
+			if err != nil {
+				return err
+			}
+			if err := CheckHTML(string(data)); err != nil {
+				return fmt.Errorf("signed %s: %w", result.route, err)
+			}
+			if err := ValidateXHTMLDocument(string(data)); err != nil {
+				return fmt.Errorf("signed %s: %w", result.route, err)
+			}
+			result.tempPath = signedPath
+		}
+		if err := writeGzipSibling(result.tempPath); err != nil {
+			return err
+		}
+	}
 	if opts.Force {
 		if err := os.RemoveAll(outDir); err != nil {
 			return err
 		}
 	}
 	for _, result := range results {
-		if opts.SignKey == "" {
-			data, err := os.ReadFile(result.tempPath)
+		for _, suffix := range []string{"", ".gz"} {
+			data, err := os.ReadFile(result.tempPath + suffix)
 			if err != nil {
 				return err
 			}
-			if err := atomicWriteFile(result.finalPath, data, 0o644); err != nil {
+			if err := atomicWriteFile(result.finalPath+suffix, data, 0o644); err != nil {
 				return err
 			}
-			if err := writeGzipSibling(result.finalPath); err != nil {
-				return err
-			}
-			fmt.Fprintf(opts.Stdout, "built: %s\n", cleanSlash(relativeDisplay(siteDir, result.finalPath)))
-			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(result.finalPath), 0o755); err != nil {
-			return err
+		verb := "built"
+		if opts.SignKey != "" {
+			verb = "signed"
 		}
-		if err := SignHTML(attestTool, opts.SignKey, result.tempPath, result.finalPath); err != nil {
-			return err
-		}
-		if err := writeGzipSibling(result.finalPath); err != nil {
-			return err
-		}
-		fmt.Fprintf(opts.Stdout, "signed: %s\n", cleanSlash(relativeDisplay(siteDir, result.finalPath)))
+		fmt.Fprintf(opts.Stdout, "%s: %s\n", verb, cleanSlash(relativeDisplay(siteDir, result.finalPath)))
 	}
 	if opts.SignKey == "" {
 		fmt.Fprintln(opts.Stdout, "note: generated unsigned HTML; run with --sign or --sign-key to create attested pages")
@@ -252,7 +266,7 @@ func writeGzipSibling(path string) error {
 	return atomicWriteFile(path+".gz", buf.Bytes(), 0o644)
 }
 
-func renderNestedPage(themeDir string, themeCfg ThemeConfig, site SiteView, page Page, resources []ManifestResource, root TemplateRoot) (string, error) {
+func renderXHTMLPage(themeDir string, themeCfg ThemeConfig, site SiteView, page Page, resources []ManifestResource, root TemplateRoot) (string, error) {
 	comment, err := ManifestComment(site, page, resources, nil)
 	if err != nil {
 		return "", err
@@ -414,7 +428,7 @@ func embedImageWithTitle(page Page, path, alt, title string) (template.HTML, Man
 	if title != "" {
 		titleAttr = ` title="` + template.HTMLEscapeString(title) + `"`
 	}
-	tag := `<img src="` + src + `" alt="` + template.HTMLEscapeString(alt) + `"` + titleAttr + ` loading="lazy" decoding="async">`
+	tag := `<img src="` + src + `" alt="` + template.HTMLEscapeString(alt) + `"` + titleAttr + ` loading="lazy" decoding="async" />`
 	plural := "pages"
 	if page.Kind == "post" {
 		plural = "posts"

@@ -57,7 +57,7 @@
   },
   {
     "name": "explicit-navigation-flat-xhtml",
-    "output_mode": "flat-xhtml-v1",
+    "output_mode": "xhtml5",
     "action": "check",
     "expect": "pass",
     "starter": "classic-xhtml",
@@ -78,8 +78,7 @@
           "<a href=\"about.html\" rel=\"related\">Related: About</a>"
         ],
         "not_contains": [
-          "href=\"/\"",
-          "SMOL ATTESTED MANIFEST V1"
+          "href=\"/\""
         ]
       }
     ]
@@ -128,7 +127,7 @@
   },
   {
     "name": "no-links-flat-xhtml-byte-boundary",
-    "output_mode": "flat-xhtml-v1",
+    "output_mode": "xhtml5",
     "action": "build",
     "expect": "pass",
     "starter": "classic-xhtml",
@@ -139,8 +138,7 @@
           "</main>\n</body>"
         ],
         "not_contains": [
-          "</main>\n\n</body>",
-          "SMOL ATTESTED MANIFEST V1"
+          "</main>\n\n</body>"
         ]
       }
     ]
@@ -347,7 +345,7 @@
     "name": "check-flat-xhtml-feature-default",
     "output_mode": "",
     "action": "check",
-    "expect": "fail",
+    "expect": "pass",
     "fixture": "invalid/check-flat-xhtml-feature-default",
     "check_path": "checked/bad.html",
     "error_substring": "interactive HTML is not supported"

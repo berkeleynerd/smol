@@ -148,7 +148,7 @@ func NewContent(siteDir, kind, slug, title string) error {
 	if err != nil {
 		return err
 	}
-	if (site.OutputMode == outputModeFlatXHTML || site.OutputMode == outputModeFlatGemini) && kind == "post" {
+	if site.OutputMode == outputModeFlatGemini && kind == "post" {
 		return fmt.Errorf("%s supports pages only", site.OutputMode)
 	}
 	if !slugRE.MatchString(slug) {
@@ -263,11 +263,11 @@ nav a {
 }
 
 func defaultHeadPartial() string {
-	return `<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+	return `<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{{.Page.Title}} - {{.Site.Title}}</title>
-<meta name="description" content="{{.Page.Summary}}">
-<link rel="canonical" href="{{.Page.CanonicalURL}}">
+<meta name="description" content="{{.Page.Summary}}" />
+<link rel="canonical" href="{{.Page.CanonicalURL}}" />
 <style>
 {{.Smol.InlineCSS}}
 </style>
@@ -283,8 +283,8 @@ func defaultFooterPartial() string {
 }
 
 func defaultPageTemplate() string {
-	return `<!doctype html>
-<html lang="{{.Site.Language}}">
+	return `<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="{{.Site.Language}}">
 <head>
   {{template "head" .}}
 </head>
@@ -320,8 +320,8 @@ func defaultPageTemplate() string {
 }
 
 func defaultPostTemplate() string {
-	return `<!doctype html>
-<html lang="{{.Site.Language}}">
+	return `<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="{{.Site.Language}}">
 <head>
   {{template "head" .}}
 </head>
@@ -360,8 +360,8 @@ func defaultPostTemplate() string {
 }
 
 func defaultIndexTemplate() string {
-	return `<!doctype html>
-<html lang="{{.Site.Language}}">
+	return `<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="{{.Site.Language}}">
 <head>
   {{template "head" .}}
 </head>
@@ -411,7 +411,8 @@ func classicXHTMLSiteConfigJSON() string {
   "base_url": "https://example.org",
   "publisher": "Example Publisher",
   "theme": "classic-xhtml",
-  "output_mode": "flat-xhtml-v1",
+  "output_mode": "xhtml5",
+  "routing": "flat",
   "sign_key": "",
   "nav": []
 }
@@ -444,16 +445,17 @@ func classicXHTMLThemeJSON() string {
 }
 
 func classicXHTMLPageTemplate() string {
-	return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+	return `<!DOCTYPE html>
 <html
-  xmlns:epub="http://www.idpf.org/2007/ops" xmlns="http://www.w3.org/1999/xhtml"
-  xml:lang="{{.Site.Language}}" epub="http://www.idpf.org/2007/ops" lang="{{.Site.Language}}">
+  xmlns="http://www.w3.org/1999/xhtml"
+  xml:lang="{{.Site.Language}}" lang="{{.Site.Language}}">
 <head>
-<meta charset="utf-8" http-equiv="content-type" content="application/xhtml+xml; charset=UTF-8" />
+<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{{.Page.Title}}</title>
 <style type="text/css">
 {{.Smol.InlineCSS}}</style>
+{{.Smol.ManifestComment}}
 </head>
 <body{{if .PageNav.HasLinks}} id="top"{{end}}>
 <header>
@@ -481,7 +483,7 @@ func classicXHTMLPageTemplate() string {
 }
 
 func classicIndexMarkdown() string {
-	return `This starter demonstrates the flat XHTML publishing path in smol. The pages are written as constrained Markdown and rendered as old-school single-file XHTML.
+	return `This starter demonstrates the flat XHTML publishing path in smol. The pages are written as constrained Markdown and rendered as self-contained XHTML5.
 
 - [About this starter](about.html)
 - [Sample page](sample.html)
@@ -494,7 +496,7 @@ func classicIndexMarkdown() string {
 func classicAboutMarkdown() string {
 	return `## About this starter
 
-This site uses the classic-xhtml theme, flat filenames, inline CSS, and Markdown bodies. It is meant to show the ordinary publish flow without requiring signing setup.
+This site uses the classic-xhtml theme, flat filenames, inline CSS, and Markdown bodies. It supports local previews without signing setup; publication requires a configured signing fingerprint.
 
 > Markdown bodies stay pure Markdown. When the narrow dialect is not enough, author the page as an ` + "`.html`" + ` body instead.
 
@@ -649,7 +651,7 @@ p {
   margin-right: 0.625%;
   margin-top: 0.0em;
   text-indent: 3.281%;
-  text-align: normal;
+  text-align: start;
 }
 pre {
   background: #f6f6f6;

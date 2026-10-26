@@ -19,6 +19,7 @@ type PublishOptions struct {
 	SignKey       string
 	SignKeySource bool
 	Unsigned      bool
+	AttestPath    string
 	DryRun        bool
 	Host          string
 	User          string
@@ -95,6 +96,19 @@ func PublishSite(opts PublishOptions) error {
 		printPublishDryRun(opts.Stdout, siteDir, outDir, opts.NoBuild, commands)
 		return nil
 	}
+	gemini := siteCfg.OutputMode == outputModeFlatGemini
+	if opts.NoBuild {
+		if err := validatePublishOutputDir(outDir); err != nil {
+			return err
+		}
+	}
+	fingerprint := strings.TrimSpace(opts.SignKey)
+	if fingerprint == "" && !opts.SignKeySource {
+		fingerprint = strings.TrimSpace(siteCfg.SignKey)
+	}
+	if !gemini && (opts.Unsigned || !fullFingerprintRE.MatchString(fingerprint)) {
+		return fmt.Errorf("HTML publication requires a full signing-key fingerprint; unsigned builds are for local preview")
+	}
 	if !opts.NoBuild {
 		build := opts.buildSite
 		if build == nil {
@@ -106,6 +120,7 @@ func PublishSite(opts PublishOptions) error {
 			SignKey:       opts.SignKey,
 			SignKeySource: opts.SignKeySource,
 			Unsigned:      opts.Unsigned,
+			AttestPath:    opts.AttestPath,
 			Force:         true,
 			Stdout:        opts.Stdout,
 		}); err != nil {
@@ -115,6 +130,29 @@ func PublishSite(opts PublishOptions) error {
 	if err := validatePublishOutputDir(outDir); err != nil {
 		return err
 	}
+	snapshot, err := snapshotOutput(outDir)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(snapshot)
+	attestTool := ""
+	if !gemini {
+		toolDir, tempErr := os.MkdirTemp("", "smol-verify-tool-*")
+		if tempErr != nil {
+			return tempErr
+		}
+		defer os.RemoveAll(toolDir)
+		attestTool, err = ResolveAttestTool(AttestResolverOptions{ExplicitPath: opts.AttestPath, TempDir: toolDir, Stdout: opts.Stdout})
+		if err != nil {
+			return err
+		}
+	}
+	hashes, err := verifyPublishOutput(snapshot, attestTool, fingerprint, gemini)
+	if err != nil {
+		return err
+	}
+	commands = publishCommands(snapshot, target)
+	commands[2].Stdin = remoteVerifyScript(remoteStagePath(target.Path), hashes) + commands[2].Stdin
 	runner := opts.commandRunner
 	if runner == nil {
 		runner = execPublishCommandRunner{}
