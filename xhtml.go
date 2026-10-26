@@ -41,7 +41,7 @@ func validateXML(document string, full bool) error {
 	d := xml.NewDecoder(strings.NewReader(input))
 	var stack []xml.Name
 	var style strings.Builder
-	roots, heads, bodies, doctypes := 0, 0, 0, 0
+	roots, heads, bodies, doctypes, encodings := 0, 0, 0, 0, 0
 	for {
 		start := d.InputOffset()
 		token, err := d.Token()
@@ -166,6 +166,17 @@ func validateXML(document string, full bool) error {
 			if t.Name.Local == "meta" && values["http-equiv"] != "" && strings.ToLower(values["http-equiv"]) != "content-type" {
 				return fmt.Errorf("meta http-equiv is not supported")
 			}
+			if full && t.Name.Space == xhtmlNamespace && t.Name.Local == "meta" && (values["charset"] != "" || strings.EqualFold(values["http-equiv"], "content-type")) {
+				encodings++
+				// HTML's byte-level encoding prescan does not decode character
+				// references. A decoded "utf-8" value alone is not sufficient.
+				if strings.Contains(input[start:d.InputOffset()], "&") {
+					return fmt.Errorf("UTF-8 encoding declaration must use literal metadata without character references")
+				}
+				if d.InputOffset() > 1024 {
+					return fmt.Errorf("UTF-8 encoding declaration must fit within the first 1024 bytes")
+				}
+			}
 			if t.Name.Local == "img" && !embeddedRaster(values["src"]) {
 				return fmt.Errorf("img requires an embedded raster src")
 			}
@@ -203,6 +214,9 @@ func validateXML(document string, full bool) error {
 	}
 	if full && doctypes != 1 {
 		return fmt.Errorf("XHTML5 requires <!DOCTYPE html>")
+	}
+	if full && encodings != 1 {
+		return fmt.Errorf("XHTML5 requires exactly one UTF-8 encoding declaration within the first 1024 bytes")
 	}
 	return validateHTMLStructure(document, full)
 }

@@ -115,7 +115,7 @@ func treeShape(node *html.Node) nodeShape {
 		}
 		// The XML CDATA boundaries are inside CSS comments for text/html.
 		// Comments differ between parsers, but the effective CSS must match.
-		shape.Text = strings.TrimSpace(cssCommentRE.ReplaceAllString(css.String(), " "))
+		shape.Text = cssStructure(css.String())
 		return shape
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {

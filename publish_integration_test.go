@@ -75,18 +75,31 @@ func TestPublishRejectsUnverifiedPagesBeforeTransport(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := filepath.Join(site, "public")
+	signedFixture := func(dir, document string) {
+		t.Helper()
+		input := filepath.Join(t.TempDir(), "input.html")
+		writeText(t, input, document)
+		command := exec.Command(tool, "sign", "-k", fingerprint, "--out", filepath.Join(dir, "index.html"), "--force", input)
+		if out, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("sign fixture: %v %s", err, out)
+		}
+	}
 	cases := map[string]func(string){
 		"unsigned": func(dir string) {
 			writeText(t, filepath.Join(dir, "index.html"), xhtmlDocument("", "<p>Unsigned</p>"))
 			os.Remove(filepath.Join(dir, "index.html.gz"))
 		},
 		"signed external resource": func(dir string) {
-			input := filepath.Join(t.TempDir(), "external.html")
-			writeText(t, input, xhtmlDocument("", `<p style="background:url(https://example.invalid/image.png)">Signed but not self-contained</p>`))
-			command := exec.Command(tool, "sign", "-k", fingerprint, "--out", filepath.Join(dir, "index.html"), "--force", input)
-			if out, err := command.CombinedOutput(); err != nil {
-				t.Fatalf("sign external-resource fixture: %v %s", err, out)
-			}
+			signedFixture(dir, xhtmlDocument("", `<p style="background:url(https://example.invalid/image.png)">Signed but not self-contained</p>`))
+		},
+		"signed stylesheet comment bypass": func(dir string) {
+			signedFixture(dir, xhtmlDocument(`<style>p::before{content:"/*"} body{background-image:url("https://example.invalid/image")} p::after{content:"*/"}</style>`, "<p>Signed</p>"))
+		},
+		"signed attribute comment bypass": func(dir string) {
+			signedFixture(dir, xhtmlDocument("", `<p style="--a:'/*'; background-image:url('https://example.invalid/image'); --b:'*/'">Signed</p>`))
+		},
+		"signed missing encoding": func(dir string) {
+			signedFixture(dir, strings.Replace(xhtmlDocument("", "<p>Café</p>"), `<meta charset="utf-8" />`, "", 1))
 		},
 		"modified content": func(dir string) {
 			p := filepath.Join(dir, "index.html")
@@ -188,38 +201,125 @@ func TestPublishUploadsVerifiedSnapshotWithoutManifest(t *testing.T) {
 }
 
 func TestRemoteByteVerificationBeforeActivation(t *testing.T) {
-	dir := t.TempDir()
-	stage := filepath.Join(dir, "stage ' with spaces")
-	target := filepath.Join(dir, "live")
-	backup := filepath.Join(dir, "backup")
-	path := "nested/page ' \\ $literal.html"
+	path := "nested/page\n ' \\ $literal.html"
 	data := []byte("signed bytes")
-	hashes := map[string]string{path: fmtHash(data)}
-	for _, corrupt := range []bool{true, false} {
-		writeText(t, filepath.Join(target, "old.html"), "old live content")
-		writeBytes(t, filepath.Join(stage, path), data)
-		if corrupt {
-			writeText(t, filepath.Join(stage, path), "changed in transit")
+	inventory := publishInventory{hashes: map[string]string{path: fmtHash(data)}, directories: []string{"nested", "empty", "empty/sub"}}
+	symlink := func(target, link string) {
+		t.Helper()
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
 		}
-		script := remoteVerifyScript(stage, hashes) + remoteSwapScript(target, stage, backup)
-		command := exec.Command("sh", "-s")
-		command.Stdin = strings.NewReader(script)
-		out, err := command.CombinedOutput()
-		if corrupt {
-			if err == nil {
-				t.Fatal("corrupt upload activated")
+	}
+	cases := map[string]func(string){
+		"valid":         func(stage string) {},
+		"changed bytes": func(stage string) { writeText(t, filepath.Join(stage, path), "changed in transit") },
+		"extra file":    func(stage string) { writeText(t, filepath.Join(stage, "injected.html"), "extra") },
+		"hidden file":   func(stage string) { writeText(t, filepath.Join(stage, ".hidden"), "extra") },
+		"newline file":  func(stage string) { writeText(t, filepath.Join(stage, "extra\nfile"), "extra") },
+		"extra directory": func(stage string) {
+			if err := os.Mkdir(filepath.Join(stage, "unlisted"), 0o755); err != nil {
+				t.Fatal(err)
 			}
-			if readText(t, filepath.Join(target, "old.html")) != "old live content" {
-				t.Fatal("corrupt upload replaced live site")
+		},
+		"extra symlink": func(stage string) { symlink("nested", filepath.Join(stage, "link")) },
+		"extra special file": func(stage string) {
+			if _, err := exec.LookPath("mkfifo"); err != nil {
+				t.Skip("requires POSIX mkfifo")
 			}
-		} else {
-			if err != nil {
-				t.Fatalf("valid upload failed: %v %s", err, out)
+			if out, err := exec.Command("mkfifo", filepath.Join(stage, "pipe")).CombinedOutput(); err != nil {
+				t.Fatalf("mkfifo: %v %s", err, out)
 			}
-			if readText(t, filepath.Join(target, path)) != string(data) {
-				t.Fatal("activated bytes differ")
+		},
+		"missing file": func(stage string) {
+			if err := os.Remove(filepath.Join(stage, path)); err != nil {
+				t.Fatal(err)
 			}
-		}
+		},
+		"missing empty directory": func(stage string) {
+			if err := os.Remove(filepath.Join(stage, "empty", "sub")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"file symlink": func(stage string) {
+			file := filepath.Join(stage, path)
+			outside := filepath.Join(t.TempDir(), "outside")
+			if err := os.Rename(file, outside); err != nil {
+				t.Fatal(err)
+			}
+			symlink(outside, file)
+		},
+		"parent symlink": func(stage string) {
+			outside := filepath.Join(t.TempDir(), "outside")
+			if err := os.Rename(filepath.Join(stage, "nested"), outside); err != nil {
+				t.Fatal(err)
+			}
+			symlink(outside, filepath.Join(stage, "nested"))
+		},
+		"stage symlink": func(stage string) {
+			outside := filepath.Join(t.TempDir(), "outside")
+			if err := os.Rename(stage, outside); err != nil {
+				t.Fatal(err)
+			}
+			symlink(outside, stage)
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			stage := filepath.Join(dir, "stage ' with spaces")
+			target := filepath.Join(dir, "live")
+			backup := filepath.Join(dir, "backup")
+			writeText(t, filepath.Join(target, "old.html"), "old live content")
+			writeBytes(t, filepath.Join(stage, path), data)
+			if err := os.MkdirAll(filepath.Join(stage, "empty", "sub"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			mutate(stage)
+			script := remoteVerifyScript(stage, inventory) + remoteSwapScript(target, stage, backup)
+			command := exec.Command("sh", "-s")
+			command.Stdin = strings.NewReader(script)
+			out, err := command.CombinedOutput()
+			if name != "valid" {
+				if err == nil {
+					t.Fatal("changed upload activated")
+				}
+				if readText(t, filepath.Join(target, "old.html")) != "old live content" {
+					t.Fatal("corrupt upload replaced live site")
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("valid upload failed: %v %s", err, out)
+				}
+				if readText(t, filepath.Join(target, path)) != string(data) {
+					t.Fatal("activated bytes differ")
+				}
+			}
+		})
+	}
+}
+
+func TestPublishInventoryRetainsEmptyDirectories(t *testing.T) {
+	dir := t.TempDir()
+	writeText(t, filepath.Join(dir, "index.gmi"), "# Home\n\nText.\n")
+	if err := os.MkdirAll(filepath.Join(dir, "empty", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := snapshotOutput(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(snapshot)
+	inventory, err := verifyPublishOutput(snapshot, "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inventory.directories) != 2 || len(inventory.hashes) != 1 {
+		t.Fatalf("inventory: %#v", inventory)
+	}
+	command := exec.Command("sh", "-s")
+	command.Stdin = strings.NewReader(remoteVerifyScript(snapshot, inventory))
+	if out, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("exact snapshot failed: %v %s", err, out)
 	}
 }
 

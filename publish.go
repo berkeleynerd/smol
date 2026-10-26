@@ -147,12 +147,12 @@ func PublishSite(opts PublishOptions) error {
 			return err
 		}
 	}
-	hashes, err := verifyPublishOutput(snapshot, attestTool, fingerprint, gemini)
+	inventory, err := verifyPublishOutput(snapshot, attestTool, fingerprint, gemini)
 	if err != nil {
 		return err
 	}
 	commands = publishCommands(snapshot, target)
-	commands[2].Stdin = remoteVerifyScript(remoteStagePath(target.Path), hashes) + commands[2].Stdin
+	commands[2].Stdin = remoteVerifyScript(remoteStagePath(target.Path), inventory) + commands[2].Stdin
 	runner := opts.commandRunner
 	if runner == nil {
 		runner = execPublishCommandRunner{}

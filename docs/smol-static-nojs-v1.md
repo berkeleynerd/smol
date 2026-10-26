@@ -26,19 +26,32 @@ Generated HTML is expected to remain script-free and self-contained:
 
 - inline CSS only;
 - local supported images embedded as `data:` URLs;
-- XHTML-style static markup discipline.
+- well-formed UTF-8 XHTML5, the default and only HTML format.
 
 The static validator rejects JavaScript, `javascript:` URLs, event-handler
 attributes, refresh meta tags, external stylesheet/preload/resource links,
 non-embedded images, external media, iframes, objects, embeds, forms, buttons,
 textareas, and selects.
 
-Nested/default HTML also rejects inline SVG and all `<input>` elements.
-`flat-xhtml-v1` permits inline SVG and the canonical static checkbox inputs
-used by task-list rendering.
+Both directory and flat routes use one policy: constrained inert SVG and only
+canonical `<input type="checkbox" id="cbN" />` controls are permitted. No
+additional input attributes or form wiring are allowed. Markdown task lists
+render as static glyphs.
 
-Strict historical XHTML DTD conformance is not a goal. `smol` uses XHTML-style
-output for consistent closing and static markup, not for DTD purity.
+Every full page requires `<!DOCTYPE html>`, an XHTML-namespaced `html` root,
+one `head` with a `title`, and one `body`. Exactly one UTF-8 encoding declaration
+(normally `<meta charset="utf-8" />`) must use literal metadata without character
+references and fit within the first 1024 bytes.
+XML and HTML parsing must agree on structure and text. Unsupported HTML content
+models, shorthand boolean attributes, HTML-only entities, XML declarations,
+processing instructions, and external DTDs/entities are rejected. Inline CSS
+uses CSS-commented CDATA wrappers when needed for XML/HTML compatibility.
+
+Resource validation tokenizes CSS with `github.com/tdewolff/parse/v2/css`
+after CSS newline/NUL preprocessing and decodes escapes inside identifier tokens.
+It covers stylesheets, XML-decoded style attributes, and SVG attribute values.
+Comment delimiters inside a quoted string do not remove live declarations.
+All CSS `url()` functions, including SVG `url(#id)`, remain unsupported.
 
 ## Structural Regions
 
@@ -124,9 +137,10 @@ The HTML-only `Top` link is not emitted in Gemini.
 
 ## Manifest
 
-Nested HTML output includes a `SMOL ATTESTED MANIFEST V1` comment. The manifest
-is covered by the whole-page signature only when signing is enabled. Nested
-manifests may include byte-exact hashes for declared `authored-content` and
+Both starter themes include a `SMOL ATTESTED MANIFEST V1` comment for either
+XHTML route layout. Custom themes may omit it. The manifest is covered by the
+whole-page signature only when signing is enabled. Manifests may include
+byte-exact hashes for declared `authored-content` and
 `generated-navigation` regions. These hashes are computed from the raw bytes
 between the first exact close marker after the single exact open marker. They
 are whitespace- and line-ending-sensitive provenance and diff aids, not
@@ -153,6 +167,23 @@ manifest inside a marked region, `smol build` rejects the page because the
 recorded region bytes would change between the no-region and final manifest
 render passes.
 
-Flat XHTML and Gemini outputs do not carry an embedded manifest today.
+Gemini output does not carry an embedded manifest. Manifest presence, canonical
+URLs, and allowed-origin lists are not required for authorship authentication.
+Unchanged signed bytes can authenticate on a mirror or offline.
+
+## Publication
+
+Validate the document before signing and validate the complete signer's output
+without rewriting it. HTML publication requires expected-key signature
+verification for every page and matching decompressed gzip siblings in a private
+snapshot. The remote stage must contain exactly the snapshot's files and
+directories (including empty ones), with no symlinks or special files, and matching
+SHA-256 hashes, before activation. Validation failures preserve existing output.
+
+HTTP headers are outside the body signature. The Reader extension separately
+checks the delivered MIME type, UTF-8 encoding, and display-affecting headers
+before showing green; unsupported response metadata yields yellow BODY VERIFIED
+for an otherwise authentic body. Static-profile validation does not inspect a
+live server's HTTP headers.
 
 See `docs/smol-attested-manifest-v1.md` for the manifest format.

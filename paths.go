@@ -8,11 +8,11 @@ import (
 
 func routeFor(kind, slug, outputMode string) string {
 	if outputMode == routingFlat {
-		if slug == "index" {
-			return "/"
-		}
 		if kind == "post" {
 			return "/posts/" + slug + ".html"
+		}
+		if slug == "index" {
+			return "/"
 		}
 		return "/" + slug + ".html"
 	}

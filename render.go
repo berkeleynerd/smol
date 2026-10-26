@@ -108,6 +108,14 @@ func BuildSite(opts BuildOptions) error {
 	}
 	pages = nonDraft(pages)
 	posts = nonDraft(posts)
+	outputs := make(map[string]Page)
+	for _, page := range append(append([]Page{}, pages...), posts...) {
+		path := outputPathFor(outDir, page.URL)
+		if previous, exists := outputs[path]; exists {
+			return fmt.Errorf("output collision: %s %q and %s %q both write %s", previous.Kind, previous.Slug, page.Kind, page.Slug, path)
+		}
+		outputs[path] = page
+	}
 	css, cssResources, err := loadThemeCSS(themeDir, themeCfg)
 	if err != nil {
 		return err

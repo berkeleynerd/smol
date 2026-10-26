@@ -25,7 +25,8 @@ capsules from Gemtext or Markdown source.
 - No JavaScript.
 - No broad CommonMark/GFM in v0; only constrained `markdown-xhtml-v1` and `gemtext-v1` source formats.
 - No plugins, arbitrary hooks, or client-side routing. The HTML structure check
-  uses `golang.org/x/net/html`; signing remains in the separate `attest` tool.
+  uses `golang.org/x/net/html`; CSS tokenization uses `github.com/tdewolff/parse/v2/css`.
+  Signing remains in the separate `attest` tool.
 - No external stylesheets, scripts, fonts, iframes, forms, embeds, or remote image fetching.
 - No Publii theme rendering and no Handlebars support.
 - No cryptographic signing implementation inside `smol`.
@@ -126,11 +127,17 @@ not be placed in cloud workspaces.
 selects `"directory"` (default: `/about/index.html`) or `"flat"` (`/about.html`);
 posts use `/posts/<slug>/index.html` or `/posts/<slug>.html`. Both choices use
 identical XHTML5 and static-resource validation. Gemini is a separate format.
+An `index` post keeps its own post route; only the `index` page is the homepage.
+For an older flat site, replace `"output_mode": "flat-xhtml-v1"` with
+`"output_mode": "xhtml5", "routing": "flat"`.
 
 Every generated page must be well-formed UTF-8 XML with `<!DOCTYPE html>`, an
 `html` root in `http://www.w3.org/1999/xhtml`, one `head` with a `title`, and one
 `body`. XML and HTML parsing must agree on structure and text; static content
-models are checked as well. Ordinary elements need explicit closing tags;
+models are checked as well. Exactly one UTF-8 encoding declaration, normally
+`<meta charset="utf-8" />`, must use literal metadata (no character references)
+and fit entirely within the first 1024 bytes.
+Ordinary elements need explicit closing tags;
 void elements use `<img … />`, `<br />`, etc. Attributes must be quoted, and
 boolean attributes need values, such as `open="open"`. Use Unicode, numeric
 references, or XML's predefined entities (`&amp;`, `&lt;`, `&gt;`, `&quot;`,
@@ -142,6 +149,11 @@ processing instructions, external DTDs, and entity declarations are rejected.
 The final signature is an XML-safe comment after the root element. Both the
 unsigned document and the signer's final output are validated in staging;
 validation or signing failure preserves existing output.
+
+CSS resource checks use tokenization after CSS input preprocessing and identifier
+escape decoding. Quoted comment delimiters cannot hide live declarations.
+The same policy applies to stylesheets, decoded `style` attributes, and SVG
+attribute values; comments and harmless resource words inside strings are inert.
 
 ## Content
 
@@ -264,8 +276,9 @@ the fixed body functions:
 <p>{{date .Page.PublishedUTC "2006-01-02"}}</p>
 ```
 
-Supported image types are PNG, JPG, JPEG, GIF, WebP, and AVIF. SVG is not
-supported in v0. Images are read only from the bundle directory and embedded as
+Supported image files are PNG, JPG, JPEG, GIF, WebP, and AVIF. SVG image files are
+not embedded; constrained inline SVG may be authored in `.html` fragments.
+Images are read only from the bundle directory and embedded as
 data URLs. Flat files do not have a local asset directory, so `{{image}}` and
 Markdown images require bundle form.
 
@@ -430,9 +443,11 @@ The default publish builds finalized pages, makes a private output snapshot,
 and validates every page's XML, static-resource policy, and embedded OpenPGP
 signature with `attest verify --trusted FINGERPRINT`. Each gzip sibling must
 decompress to its matching signed page. Symlinks and special files are rejected.
-Only that verified snapshot is uploaded. The remote host checks SHA-256 hashes
-of the uploaded files before replacing the live directory, using `sha256sum`,
-OpenBSD `sha256`, or `shasum`. A failed check leaves the live site in place.
+Only that verified snapshot is uploaded. The remote host requires exactly the
+expected files and directories, including empty directories, rejects symlinks and
+special files, and checks SHA-256 hashes before replacing the live directory, using `sha256sum`,
+OpenBSD `sha256`, or `shasum`. Extra files or directories fail the check.
+A failed check leaves the live site in place.
 `--attest PATH` selects the signer/verifier. Gemini publication retains its
 separate unsigned behavior.
 

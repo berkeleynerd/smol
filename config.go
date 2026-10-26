@@ -108,7 +108,7 @@ func LoadSiteConfig(siteDir string) (SiteConfig, error) {
 		cfg.OutputMode = outputModeXHTML5
 	}
 	if cfg.OutputMode != outputModeXHTML5 && cfg.OutputMode != outputModeFlatGemini {
-		return SiteConfig{}, fmt.Errorf("invalid smol.json: output_mode must be %s or %s", outputModeXHTML5, outputModeFlatGemini)
+		return SiteConfig{}, fmt.Errorf("invalid smol.json: output_mode must be %s or %s; replace flat-xhtml-v1 with output_mode: %q and routing: %q", outputModeXHTML5, outputModeFlatGemini, outputModeXHTML5, routingFlat)
 	}
 	if cfg.Routing == "" {
 		cfg.Routing = routingDirectory

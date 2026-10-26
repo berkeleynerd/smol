@@ -81,18 +81,22 @@ func TestXHTMLAllowsSharedStaticFeatures(t *testing.T) {
 
 func TestXHTMLRejectsExternalResourceBypasses(t *testing.T) {
 	cases := map[string]string{
-		"inline style":             `<p style="background:url(https://example.invalid/a.png)">Text</p>`,
-		"entity-obfuscated style":  `<p style="background:u&#114;l(https://example.invalid/a.png)">Text</p>`,
-		"CSS escape":               `<p style="background:\75rl(https://example.invalid/a.png)">Text</p>`,
-		"CSS simple escape":        `<p style="background:u\rl(https://example.invalid/a.png)">Text</p>`,
-		"image set string":         `<p style="background:image-set('https://example.invalid/a.png' 1x)">Text</p>`,
-		"SVG escaped paint":        `<svg xmlns="http://www.w3.org/2000/svg"><path fill="u\72l(https://example.invalid/a.svg)" /></svg>`,
-		"SVG image":                `<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.invalid/a.png" /></svg>`,
-		"SVG image fragment fetch": `<svg xmlns="http://www.w3.org/2000/svg"><image href="#other-document" /></svg>`,
-		"SVG xlink":                `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><use xlink:href="https://example.invalid/a.svg#x" /></svg>`,
-		"SVG data document":        `<img alt="x" src="data:image/svg+xml;base64,AA==" />`,
-		"ping":                     `<a href="/" ping="https://example.invalid/track">Home</a>`,
-		"entity-obfuscated script": `<a href="java&#115;cript:alert(1)">Bad</a>`,
+		"quoted comment style":        `<p style="--a:'/*'; background-image:url('https://example.invalid/image'); --b:'*/'">Text</p>`,
+		"entity quoted comment style": `<p style="--a:&quot;/*&quot;; background-image:u&#114;l('https://example.invalid/image'); --b:&quot;*/&quot;">Text</p>`,
+		"SVG quoted comment style":    `<svg xmlns="http://www.w3.org/2000/svg"><path style="--a:'/*'; fill:url('https://example.invalid/image'); --b:'*/'" /></svg>`,
+		"SVG quoted comment paint":    `<svg xmlns="http://www.w3.org/2000/svg"><path fill="'/*' url('https://example.invalid/image') '*/'" /></svg>`,
+		"inline style":                `<p style="background:url(https://example.invalid/a.png)">Text</p>`,
+		"entity-obfuscated style":     `<p style="background:u&#114;l(https://example.invalid/a.png)">Text</p>`,
+		"CSS escape":                  `<p style="background:\75rl(https://example.invalid/a.png)">Text</p>`,
+		"CSS simple escape":           `<p style="background:u\rl(https://example.invalid/a.png)">Text</p>`,
+		"image set string":            `<p style="background:image-set('https://example.invalid/a.png' 1x)">Text</p>`,
+		"SVG escaped paint":           `<svg xmlns="http://www.w3.org/2000/svg"><path fill="u\72l(https://example.invalid/a.svg)" /></svg>`,
+		"SVG image":                   `<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.invalid/a.png" /></svg>`,
+		"SVG image fragment fetch":    `<svg xmlns="http://www.w3.org/2000/svg"><image href="#other-document" /></svg>`,
+		"SVG xlink":                   `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><use xlink:href="https://example.invalid/a.svg#x" /></svg>`,
+		"SVG data document":           `<img alt="x" src="data:image/svg+xml;base64,AA==" />`,
+		"ping":                        `<a href="/" ping="https://example.invalid/track">Home</a>`,
+		"entity-obfuscated script":    `<a href="java&#115;cript:alert(1)">Bad</a>`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -105,6 +109,79 @@ func TestXHTMLRejectsExternalResourceBypasses(t *testing.T) {
 		if err := ValidateCSS(css); err == nil {
 			t.Fatalf("accepted unsafe CSS: %s", css)
 		}
+	}
+}
+
+func TestXHTMLRequiresEarlyUTF8Declaration(t *testing.T) {
+	const meta = `<meta charset="utf-8" />`
+	base := xhtmlDocument("", "<p>Café 日本語</p>")
+	for name, document := range map[string]string{
+		"missing":                   strings.Replace(base, meta, "", 1),
+		"duplicate":                 strings.Replace(base, meta, meta+meta, 1),
+		"duplicate equivalent":      strings.Replace(base, meta, meta+`<meta http-equiv="content-type" content="text/html; charset=UTF-8" />`, 1),
+		"wrong charset":             strings.Replace(base, meta, `<meta charset="windows-1252" />`, 1),
+		"empty charset":             strings.Replace(base, meta, `<meta charset="" />`, 1),
+		"entity charset":            strings.Replace(base, meta, `<meta charset="utf&#45;8" />`, 1),
+		"entity equivalent charset": strings.Replace(base, meta, `<meta http-equiv="content-type" content="text/html; charset=utf&#45;8" />`, 1),
+		"late":                      strings.Replace(base, meta, "<!--"+strings.Repeat("x", 1024)+"-->"+meta, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := ValidateXHTMLDocument(document); err == nil {
+				t.Fatal("accepted absent, ambiguous, or unsupported encoding declaration")
+			}
+		})
+	}
+	for _, declaration := range []string{meta, `<meta http-equiv="content-type" content="text/html; charset=UTF-8" />`} {
+		if err := ValidateXHTMLDocument(strings.Replace(base, meta, declaration, 1)); err != nil {
+			t.Fatalf("rejected supported declaration: %v", err)
+		}
+	}
+	// Count bytes, including multibyte text, and require the entire tag to fit.
+	for _, end := range []int{1024, 1025} {
+		prefix, suffix, _ := strings.Cut(base, meta)
+		padding := "<!--é" + strings.Repeat("x", end-len(prefix)-len(meta)-9) + "-->"
+		document := prefix + padding + meta + suffix
+		if got := strings.Index(document, meta) + len(meta); got != end {
+			t.Fatalf("fixture declaration ends at %d, want %d", got, end)
+		}
+		if err := ValidateXHTMLDocument(document); (err == nil) != (end == 1024) {
+			t.Fatalf("declaration ending at %d: %v", end, err)
+		}
+	}
+}
+
+func TestBuildRejectsCSSCommentBypassBeforeSigning(t *testing.T) {
+	for _, source := range []string{"theme", "body stylesheet", "body attribute"} {
+		t.Run(source, func(t *testing.T) {
+			dir := testSite(t)
+			buildSite(t, dir)
+			output := filepath.Join(dir, "public", "index.html")
+			before := readText(t, output)
+			marker := filepath.Join(t.TempDir(), "signer-ran")
+			tool := filepath.Join(t.TempDir(), "attest")
+			writeText(t, tool, "#!/bin/sh\ntouch "+posixSingleQuote(marker)+"\nexit 1\n")
+			if err := os.Chmod(tool, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			css := `p::before{content:"/*"} body{background-image:url("https://example.invalid/image")} p::after{content:"*/"}`
+			switch source {
+			case "theme":
+				writeText(t, filepath.Join(dir, "themes", "default", "assets", "style.css"), css)
+			case "body stylesheet":
+				writeContentSource(t, dir, "page", "index", ".html", []string{"title: Home"}, "<style>"+css+"</style>")
+			case "body attribute":
+				writeContentSource(t, dir, "page", "index", ".html", []string{"title: Home"}, `<p style="--a:'/*'; background-image:url('https://example.invalid/image'); --b:'*/'">Text</p>`)
+			}
+			if err := BuildSite(BuildOptions{SiteDir: dir, SignKey: "KEY", AttestPath: tool, Force: true}); err == nil || !strings.Contains(err.Error(), "resource-loading") {
+				t.Fatalf("error = %v", err)
+			}
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Fatalf("signer ran before validation: %v", err)
+			}
+			if readText(t, output) != before {
+				t.Fatal("failed build replaced output")
+			}
+		})
 	}
 }
 

@@ -298,6 +298,79 @@ func TestClassicXHTMLStarterBuildsFlatPages(t *testing.T) {
 	}
 }
 
+func TestIndexPostCannotOverwriteHomepage(t *testing.T) {
+	for _, starter := range starterNames {
+		t.Run(starter, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := InitSiteWithStarter(dir, starter); err != nil {
+				t.Fatal(err)
+			}
+			buildSite(t, dir)
+			home := filepath.Join(dir, "public", "index.html")
+			before := readText(t, home)
+			writeContentSource(t, dir, "post", "index", ".md", []string{"title: Index Post"}, "Unique post body.\n")
+			if err := BuildSite(BuildOptions{SiteDir: dir, Force: true}); err != nil {
+				t.Fatal(err)
+			}
+			if got := readText(t, home); strings.Contains(got, "Unique post body.") || !strings.Contains(got, "<title>") {
+				t.Fatal("index post replaced homepage")
+			}
+			// The default theme may add a post link to the homepage; its page
+			// identity must remain unchanged even when that navigation changes.
+			oldManifest := decodeManifestMap(t, before)
+			newManifest := decodeManifestMap(t, readText(t, home))
+			if oldManifest["page"].(map[string]any)["kind"] != "page" || newManifest["page"].(map[string]any)["kind"] != "page" {
+				t.Fatal("homepage manifest changed kind")
+			}
+			postPath := filepath.Join(dir, "public", "posts", "index", "index.html")
+			if starter == starterClassicXHTML {
+				postPath = filepath.Join(dir, "public", "posts", "index.html")
+			}
+			post := readText(t, postPath)
+			if !strings.Contains(post, "Unique post body.") {
+				t.Fatal("post body missing from its own route")
+			}
+			manifest := decodeManifestMap(t, post)
+			if manifest["page"].(map[string]any)["kind"] != "post" {
+				t.Fatal("post manifest lost identity")
+			}
+		})
+	}
+}
+
+func TestStartersEmitManifestForEveryPage(t *testing.T) {
+	for _, starter := range starterNames {
+		t.Run(starter, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := InitSiteWithStarter(dir, starter); err != nil {
+				t.Fatal(err)
+			}
+			buildSite(t, dir)
+			count := 0
+			err := filepath.WalkDir(filepath.Join(dir, "public"), func(path string, entry os.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if entry.IsDir() || filepath.Ext(path) != ".html" {
+					return nil
+				}
+				count++
+				manifest := decodeManifestMap(t, readText(t, path))
+				if manifest["profile"] != Profile || resourceWithKind(manifest, "css") == nil {
+					t.Fatalf("%s missing profile or stylesheet inventory", path)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count == 0 {
+				t.Fatal("no generated pages")
+			}
+		})
+	}
+}
+
 func TestPostSortingIsDeterministic(t *testing.T) {
 	dir := testSite(t)
 	writePost(t, dir, "b", "B", "2026-06-01T00:00:00Z", false)

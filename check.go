@@ -5,14 +5,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
 const checkModeDefault = "xhtml5"
-
-// Unclosed style blocks are scanned to EOF so edited or foreign files fail safe.
-var inlineStyleRE = regexp.MustCompile(`(?is)<style\b[^>]*>(.*?)(?:</style\s*>|\z)`)
 
 type CheckOptions struct {
 	Path   string
@@ -101,7 +97,7 @@ func normalizeCheckMode(mode string) (string, error) {
 	if mode == outputModeFlatGemini {
 		return mode, nil
 	}
-	return "", fmt.Errorf("invalid check mode: %s", mode)
+	return "", fmt.Errorf("invalid check mode: %s; use xhtml5 for either HTML routing layout, or flat-gemini-v1 for Gemini", mode)
 }
 
 func isCheckableFile(path string) bool {
@@ -132,15 +128,6 @@ func checkOneFile(path, mode string) error {
 }
 
 func CheckHTML(html string) error {
-	for i, match := range inlineStyleRE.FindAllStringSubmatch(html, -1) {
-		if len(match) < 2 {
-			continue
-		}
-		css := strings.ReplaceAll(strings.ReplaceAll(match[1], "/*<![CDATA[*/", ""), "/*]]>*/", "")
-		if err := ValidateCSS(css); err != nil {
-			return fmt.Errorf("inline style %d: %w", i+1, err)
-		}
-	}
 	if err := ValidateHTML(html); err != nil {
 		return err
 	}

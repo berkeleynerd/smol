@@ -16,6 +16,11 @@ import (
 
 var fullFingerprintRE = regexp.MustCompile(`^(?:[A-Fa-f0-9]{40}|[A-Fa-f0-9]{64})$`)
 
+type publishInventory struct {
+	hashes      map[string]string
+	directories []string
+}
+
 // Upload a private snapshot, not a directory an editor/build can change after
 // verification. Symlinks and special files cannot cross this boundary.
 func snapshotOutput(source string) (string, error) {
@@ -71,19 +76,22 @@ func snapshotOutput(source string) (string, error) {
 	return dir, nil
 }
 
-func verifyPublishOutput(dir, attestTool, fingerprint string, gemini bool) (map[string]string, error) {
-	hashes := map[string]string{}
+func verifyPublishOutput(dir, attestTool, fingerprint string, gemini bool) (publishInventory, error) {
+	inventory := publishInventory{hashes: map[string]string{}}
 	pages := 0
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.IsDir() {
-			return nil
-		}
 		rel, err := filepath.Rel(dir, path)
 		if err != nil {
 			return err
+		}
+		if entry.IsDir() {
+			if rel != "." {
+				inventory.directories = append(inventory.directories, filepath.ToSlash(rel))
+			}
+			return nil
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -129,35 +137,47 @@ func verifyPublishOutput(dir, attestTool, fingerprint string, gemini bool) (map[
 			}
 			pages++
 		}
-		hashes[filepath.ToSlash(rel)] = fmt.Sprintf("%x", sha256.Sum256(data))
+		inventory.hashes[filepath.ToSlash(rel)] = fmt.Sprintf("%x", sha256.Sum256(data))
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return publishInventory{}, err
 	}
 	if pages == 0 {
-		return nil, fmt.Errorf("publication contains no pages")
+		return publishInventory{}, fmt.Errorf("publication contains no pages")
 	}
-	return hashes, nil
+	return inventory, nil
 }
 
 // Verify the uploaded snapshot before replacing the live directory. This needs
 // only a SHA-256 utility on the static host, not GPG or any private/public key.
-func remoteVerifyScript(stage string, hashes map[string]string) string {
+func remoteVerifyScript(stage string, inventory publishInventory) string {
 	lines := []string{"set -eu", "stage=" + posixSingleQuote(stage),
+		`[ -d "$stage" ] && [ ! -L "$stage" ] || { echo 'Invalid upload directory' >&2; exit 1; }`,
 		`hash_file() {`,
 		`  if command -v sha256sum >/dev/null 2>&1; then sha256sum < "$1" | awk '{print $1}'`,
 		`  elif command -v sha256 >/dev/null 2>&1; then sha256 -q "$1"`,
 		`  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 < "$1" | awk '{print $1}'`,
 		`  else echo 'SHA-256 utility required' >&2; return 1; fi`, `}`}
-	paths := make([]string, 0, len(hashes))
-	for path := range hashes {
-		paths = append(paths, path)
+	paths := make([]string, 0, len(inventory.hashes))
+	for rel := range inventory.hashes {
+		paths = append(paths, rel)
+	}
+	sort.Strings(inventory.directories)
+	for _, dir := range inventory.directories {
+		lines = append(lines, `dir="$stage"/`+posixSingleQuote(dir),
+			`[ -d "$dir" ] && [ ! -L "$dir" ] || { echo 'Uploaded directory differs from verified snapshot' >&2; exit 1; }`)
 	}
 	sort.Strings(paths)
 	for _, path := range paths {
-		lines = append(lines, `file="$stage"/`+posixSingleQuote(path), `[ -f "$file" ] && [ ! -L "$file" ]`,
-			`[ "$(hash_file "$file")" = `+posixSingleQuote(hashes[path])+` ] || { echo 'Uploaded bytes differ from verified snapshot' >&2; exit 1; }`)
+		lines = append(lines, `file="$stage"/`+posixSingleQuote(path),
+			`[ -f "$file" ] && [ ! -L "$file" ] || { echo 'Uploaded file differs from verified snapshot' >&2; exit 1; }`,
+			`[ "$(hash_file "$file")" = `+posixSingleQuote(inventory.hashes[path])+` ] || { echo 'Uploaded bytes differ from verified snapshot' >&2; exit 1; }`)
 	}
+	// Every expected file and directory (including empty ones) exists with the right type.
+	// Count all entries without serializing filenames: extras containing spaces,
+	// newlines, or shell metacharacters must not escape the equality check.
+	lines = append(lines, `entries=$(find "$stage" -exec sh -c 'for entry; do printf x; done' sh {} +)`,
+		fmt.Sprintf(`[ "${#entries}" -eq %d ] || { echo 'Upload inventory differs from verified snapshot' >&2; exit 1; }`, 1+len(inventory.directories)+len(paths)))
 	return strings.Join(lines, "\n") + "\n"
 }

@@ -57,7 +57,7 @@ func TestCheckHTMLRejectsUnsafeContent(t *testing.T) {
 		"event handler":       {html: `<p onclick="alert(1)">Bad</p>`, want: "event handler"},
 		"external resource":   {html: `<link rel="stylesheet" href="https://example.org/x.css">`, want: "external resources"},
 		"non embedded image":  {html: `<img src="x.png" alt="x">`, want: "non-embedded"},
-		"unsafe inline style": {html: `<style>@import "x.css";</style><p>Bad</p>`, want: "inline style 1"},
+		"unsafe inline style": {html: `<style>@import "x.css";</style><p>Bad</p>`, want: "inline style"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -74,13 +74,13 @@ func TestCheckHTMLRejectsUnsafeStyleVariants(t *testing.T) {
 		html string
 		want string
 	}{
-		"closed":            {html: `<style>@import "x.css";</style>`, want: "inline style 1"},
-		"whitespace closed": {html: "<style>@import \"x.css\";</style \t>", want: "inline style 1"},
-		"newline closed":    {html: "<style>@import \"x.css\";</style\n>", want: "inline style 1"},
-		"uppercase":         {html: `<STYLE>@import "x.css";</STYLE>`, want: "inline style 1"},
-		"attributes":        {html: `<style type="text/css">@import "x.css";</style>`, want: "inline style 1"},
-		"unclosed":          {html: `<style>@import "x.css";`, want: "inline style 1"},
-		"multi block":       {html: `<style>p { color: black; }</style><p>Ok.</p><style>body { background: url(x.png); }</style>`, want: "inline style 2"},
+		"closed":            {html: `<style>@import "x.css";</style>`, want: "inline style"},
+		"whitespace closed": {html: "<style>@import \"x.css\";</style \t>", want: "inline style"},
+		"newline closed":    {html: "<style>@import \"x.css\";</style\n>", want: "inline style"},
+		"uppercase":         {html: `<STYLE>@import "x.css";</STYLE>`, want: "unsupported static element"},
+		"attributes":        {html: `<style type="text/css">@import "x.css";</style>`, want: "inline style"},
+		"unclosed":          {html: `<style>@import "x.css";`, want: "well-formed XML"},
+		"multi block":       {html: `<style>p { color: black; }</style><p>Ok.</p><style>body { background: url(x.png); }</style>`, want: "inline style"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -94,7 +94,7 @@ func TestCheckHTMLRejectsUnsafeStyleVariants(t *testing.T) {
 
 func TestCheckHTMLValidatesManifestWhenPresent(t *testing.T) {
 	validManifest := manifestFixture(t, `"smol-attested-manifest-v1"`, `"`+Profile+`"`)
-	if _, ok, err := ExtractManifest(`<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + validManifest); err != nil || !ok {
+	if _, ok, err := ExtractManifest(`<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + validManifest); err != nil || !ok {
 		t.Fatalf("ExtractManifest valid = %v, %v", ok, err)
 	}
 	tests := map[string]struct {
@@ -102,35 +102,35 @@ func TestCheckHTMLValidatesManifestWhenPresent(t *testing.T) {
 		want string
 	}{
 		"malformed base64": {
-			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestCommentStart + "not-base64!" + manifestCommentEnd,
+			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestCommentStart + "not-base64!" + manifestCommentEnd,
 			want: "invalid manifest base64",
 		},
 		"invalid JSON": {
-			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestCommentStart + base64.StdEncoding.EncodeToString([]byte("{")) + manifestCommentEnd,
+			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestCommentStart + base64.StdEncoding.EncodeToString([]byte("{")) + manifestCommentEnd,
 			want: "invalid manifest JSON",
 		},
 		"wrong format": {
-			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixture(t, `"wrong-format"`, `"`+Profile+`"`),
+			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixture(t, `"wrong-format"`, `"`+Profile+`"`),
 			want: "format",
 		},
 		"wrong profile": {
-			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixture(t, `"smol-attested-manifest-v1"`, `"wrong/profile"`),
+			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixture(t, `"smol-attested-manifest-v1"`, `"wrong/profile"`),
 			want: "profile",
 		},
 		"crlf wrong profile": {
-			html: strings.ReplaceAll(`<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>`+manifestFixture(t, `"smol-attested-manifest-v1"`, `"wrong/profile"`), "\n", "\r\n"),
+			html: strings.ReplaceAll(`<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>`+manifestFixture(t, `"smol-attested-manifest-v1"`, `"wrong/profile"`), "\n", "\r\n"),
 			want: "profile",
 		},
 		"javascript policy true": {
-			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithPolicy(t, false, `"smol-attested-manifest-v1"`, `"`+Profile+`"`, true, false, true),
+			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithPolicy(t, false, `"smol-attested-manifest-v1"`, `"`+Profile+`"`, true, false, true),
 			want: "policy.javascript",
 		},
 		"external resources policy true": {
-			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithPolicy(t, false, `"smol-attested-manifest-v1"`, `"`+Profile+`"`, false, true, true),
+			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithPolicy(t, false, `"smol-attested-manifest-v1"`, `"`+Profile+`"`, false, true, true),
 			want: "policy.external_resources",
 		},
 		"self contained policy false": {
-			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithPolicy(t, false, `"smol-attested-manifest-v1"`, `"`+Profile+`"`, false, false, false),
+			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithPolicy(t, false, `"smol-attested-manifest-v1"`, `"`+Profile+`"`, false, false, false),
 			want: "policy.self_contained",
 		},
 		"duplicate region": {
@@ -146,7 +146,7 @@ func TestCheckHTMLValidatesManifestWhenPresent(t *testing.T) {
 			want: "lowercase hex SHA-256",
 		},
 		"malformed resource hash": {
-			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithResources(t, `[{"kind":"inline-style","source":"theme:assets/style.css","embedded_as":"style","sha256":"`+strings.Repeat("A", 64)+`"}]`),
+			html: `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithResources(t, `[{"kind":"inline-style","source":"theme:assets/style.css","embedded_as":"style","sha256":"`+strings.Repeat("A", 64)+`"}]`),
 			want: "resources[0].sha256 must be lowercase hex SHA-256",
 		},
 	}
@@ -170,10 +170,10 @@ func TestCheckHTMLVerifiesManifestRegionHashes(t *testing.T) {
 	if err := CheckHTML(html + comment); err != nil {
 		t.Fatalf("CheckHTML valid region hash: %v", err)
 	}
-	if err := CheckHTML(`<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithRegions(t, `[{"name":"future-region","sha256":"`+strings.Repeat("a", 64)+`"}]`)); err != nil {
+	if err := CheckHTML(`<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithRegions(t, `[{"name":"future-region","sha256":"`+strings.Repeat("a", 64)+`"}]`)); err != nil {
 		t.Fatalf("CheckHTML should accept unknown future region without known markers: %v", err)
 	}
-	if err := CheckHTML(`<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithRegions(t, `[{"name":"future-region","sha256":"future-digest"}]`)); err != nil {
+	if err := CheckHTML(`<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>` + manifestFixtureWithRegions(t, `[{"name":"future-region","sha256":"future-digest"}]`)); err != nil {
 		t.Fatalf("CheckHTML should accept non-hex unknown future region digest: %v", err)
 	}
 	noRegions := html + manifestFixture(t, `"smol-attested-manifest-v1"`, `"`+Profile+`"`)
@@ -282,7 +282,7 @@ func TestDecodeManifestMapPreservesExtraFields(t *testing.T) {
 
 func TestCheckPathWalksDirectoriesAndAggregatesFailures(t *testing.T) {
 	dir := t.TempDir()
-	writeText(t, dir+"/ok.html", `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>`)
+	writeText(t, dir+"/ok.html", `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>`)
 	writeText(t, dir+"/notes.txt", "<script>ignored</script>")
 	writeText(t, dir+"/nested/bad.html", "<script>alert(1)</script>")
 	var out strings.Builder
@@ -302,7 +302,7 @@ func TestCheckPathRejectsUnsupportedFileAndModeMix(t *testing.T) {
 	if err := CheckPath(CheckOptions{Path: dir + "/notes.txt"}); err == nil || !strings.Contains(err.Error(), "unsupported file extension") {
 		t.Fatalf("CheckPath unsupported file error = %v", err)
 	}
-	writeText(t, dir+"/index.html", `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>`)
+	writeText(t, dir+"/index.html", `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>`)
 	err := CheckPath(CheckOptions{Path: dir, Mode: outputModeFlatGemini})
 	if err == nil || !strings.Contains(err.Error(), "failed check") {
 		t.Fatalf("CheckPath flat Gemini mixed directory error = %v, want failed check", err)
@@ -311,7 +311,7 @@ func TestCheckPathRejectsUnsupportedFileAndModeMix(t *testing.T) {
 
 func TestRunCheckCLIUsageAndExitCodes(t *testing.T) {
 	dir := t.TempDir()
-	writeText(t, dir+"/ok.html", `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Test</title></head><body><p>ok</p></body></html>`)
+	writeText(t, dir+"/ok.html", `<!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8" /><title>Test</title></head><body><p>ok</p></body></html>`)
 	writeText(t, dir+"/bad.html", "<script>alert(1)</script>")
 	writeText(t, dir+"/notes.txt", "not checked")
 	tests := map[string]struct {
