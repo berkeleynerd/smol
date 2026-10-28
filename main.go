@@ -209,7 +209,7 @@ func commandPublish(args []string, stdout io.Writer) error {
 var runPublishSite = PublishSite
 
 func commandPublishWithIO(args []string, stdin io.Reader, stdout, stderr io.Writer, interactive bool) error {
-	if flagsAppearAfterPositionals(args, "out", "sign-key", "host", "user", "port", "path", "attest") {
+	if flagsAppearAfterPositionals(args, "out", "sign-key", "host", "user", "port", "path", "mode", "identity-file", "known-hosts-file", "host-key-fingerprint", "attest") {
 		return usageError{"options must appear before positional arguments"}
 	}
 
@@ -225,12 +225,23 @@ func commandPublishWithIO(args []string, stdin io.Reader, stdout, stderr io.Writ
 	user := fs.String("user", "", "SSH user override")
 	port := fs.Int("port", 0, "SSH port override")
 	path := fs.String("path", "", "remote publish path override")
+	mode := fs.String("mode", "", "publish mode override: swap or in-place")
+	identityFile := fs.String("identity-file", "", "local SSH identity file")
+	knownHostsFile := fs.String("known-hosts-file", "", "pinned SSH known_hosts file")
+	hostKeyFingerprint := fs.String("host-key-fingerprint", "", "pinned SHA256 SSH host-key fingerprint")
 	dryRun := fs.Bool("dry-run", false, "print publish steps without building or connecting")
+	checkSSH := fs.Bool("check-ssh", false, "check SSH access and remote permissions without building or uploading")
 	if err := fs.Parse(args); err != nil {
 		return usageError{formatFlagParseError(err, args)}
 	}
 	if fs.NArg() > 1 {
 		return usageError{"usage: smol publish [options] [SITE_DIR]"}
+	}
+	if *checkSSH && *dryRun {
+		return usageError{"--check-ssh cannot be combined with --dry-run"}
+	}
+	if *checkSSH {
+		*noBuild = true
 	}
 	siteDir := "."
 	if fs.NArg() == 1 {
@@ -245,21 +256,30 @@ func commandPublishWithIO(args []string, stdin io.Reader, stdout, stderr io.Writ
 		return usageError{"--no-build skips the build phase, so signing cannot run; remove --no-build to build and sign, or drop --sign/--sign-key to publish existing output"}
 	}
 	preflightOpts := PublishOptions{
-		SiteDir:       siteDir,
-		OutDir:        *out,
-		NoBuild:       *noBuild,
-		SignKey:       signingIntent.key,
-		Unsigned:      *unsigned,
-		DryRun:        *dryRun,
-		Host:          *host,
-		User:          *user,
-		Port:          *port,
-		Path:          *path,
-		HostSet:       flagWasSupplied(args, "host"),
-		UserSet:       flagWasSupplied(args, "user"),
-		PortSet:       flagWasSupplied(args, "port"),
-		PathSet:       flagWasSupplied(args, "path"),
-		SignKeySource: signingIntent.source,
+		SiteDir:               siteDir,
+		OutDir:                *out,
+		NoBuild:               *noBuild,
+		SignKey:               signingIntent.key,
+		Unsigned:              *unsigned,
+		DryRun:                *dryRun,
+		CheckSSH:              *checkSSH,
+		Mode:                  *mode,
+		ModeSet:               flagWasSupplied(args, "mode"),
+		IdentityFile:          *identityFile,
+		KnownHostsFile:        *knownHostsFile,
+		HostKeyFingerprint:    *hostKeyFingerprint,
+		IdentityFileSet:       flagWasSupplied(args, "identity-file"),
+		KnownHostsFileSet:     flagWasSupplied(args, "known-hosts-file"),
+		HostKeyFingerprintSet: flagWasSupplied(args, "host-key-fingerprint"),
+		Host:                  *host,
+		User:                  *user,
+		Port:                  *port,
+		Path:                  *path,
+		HostSet:               flagWasSupplied(args, "host"),
+		UserSet:               flagWasSupplied(args, "user"),
+		PortSet:               flagWasSupplied(args, "port"),
+		PathSet:               flagWasSupplied(args, "path"),
+		SignKeySource:         signingIntent.source,
 	}
 	if err := preflightPublish(preflightOpts, signingIntent.intent == signingIntentInteractive); err != nil {
 		return err
@@ -274,23 +294,32 @@ func commandPublishWithIO(args []string, stdin io.Reader, stdout, stderr io.Writ
 		return err
 	}
 	err = runPublishSite(PublishOptions{
-		AttestPath:    *attestPath,
-		SiteDir:       siteDir,
-		OutDir:        *out,
-		NoBuild:       *noBuild,
-		SignKey:       signing.Key,
-		Unsigned:      *unsigned,
-		DryRun:        *dryRun,
-		Host:          *host,
-		User:          *user,
-		Port:          *port,
-		Path:          *path,
-		HostSet:       flagWasSupplied(args, "host"),
-		UserSet:       flagWasSupplied(args, "user"),
-		PortSet:       flagWasSupplied(args, "port"),
-		PathSet:       flagWasSupplied(args, "path"),
-		Stdout:        stdout,
-		SignKeySource: signing.Source,
+		AttestPath:            *attestPath,
+		SiteDir:               siteDir,
+		OutDir:                *out,
+		NoBuild:               *noBuild,
+		SignKey:               signing.Key,
+		Unsigned:              *unsigned,
+		DryRun:                *dryRun,
+		CheckSSH:              *checkSSH,
+		Mode:                  *mode,
+		ModeSet:               flagWasSupplied(args, "mode"),
+		IdentityFile:          *identityFile,
+		KnownHostsFile:        *knownHostsFile,
+		HostKeyFingerprint:    *hostKeyFingerprint,
+		IdentityFileSet:       flagWasSupplied(args, "identity-file"),
+		KnownHostsFileSet:     flagWasSupplied(args, "known-hosts-file"),
+		HostKeyFingerprintSet: flagWasSupplied(args, "host-key-fingerprint"),
+		Host:                  *host,
+		User:                  *user,
+		Port:                  *port,
+		Path:                  *path,
+		HostSet:               flagWasSupplied(args, "host"),
+		UserSet:               flagWasSupplied(args, "user"),
+		PortSet:               flagWasSupplied(args, "port"),
+		PathSet:               flagWasSupplied(args, "path"),
+		Stdout:                stdout,
+		SignKeySource:         signing.Source,
 	})
 	if err == nil && *dryRun {
 		switch signingIntent.intent {
@@ -647,6 +676,11 @@ Publish options:
   --user USER               SSH user override.
   --port PORT               SSH port override.
   --path PATH               Remote publish path override.
+  --mode MODE               Publish mode: swap (default) or in-place.
+  --identity-file PATH      SSH identity override.
+  --known-hosts-file PATH   Known-host file paired with a host-key fingerprint.
+  --host-key-fingerprint FPR Pinned SHA256 SSH host-key fingerprint.
+  --check-ssh               Check SSH access and permissions without uploading.
   --dry-run                 Print publish steps without building or connecting.
 
 Options must appear before positional arguments.

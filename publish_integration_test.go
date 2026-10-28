@@ -324,3 +324,35 @@ func TestPublishInventoryRetainsEmptyDirectories(t *testing.T) {
 }
 
 func fmtHash(data []byte) string { sum := sha256.Sum256(data); return fmt.Sprintf("%x", sum) }
+
+func TestPublishAcceptsExactSigningKeySelector(t *testing.T) {
+	site := testSite(t)
+	writePublishConfig(t, site, "example.org", "", 22, "/srv/site")
+	tool, fingerprint := configurePublishSigning(t, site)
+	selector := fingerprint + "!"
+	replaceInFile(t, filepath.Join(site, "smol.json"), fingerprint, selector)
+	if err := BuildSite(BuildOptions{SiteDir: site, AttestPath: tool}); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("existing signed output with configured exact key", func(t *testing.T) {
+		runner := &recordingPublishRunner{}
+		if err := PublishSite(PublishOptions{SiteDir: site, NoBuild: true, AttestPath: tool, commandRunner: runner}); err != nil {
+			t.Fatalf("configured exact-key selector must verify using bare expected fingerprint: %v", err)
+		}
+		if len(runner.commands) != 3 {
+			t.Fatalf("expected verified snapshot transport, got %d commands", len(runner.commands))
+		}
+	})
+	t.Run("explicit selector preserved for build", func(t *testing.T) {
+		runner := &recordingPublishRunner{}
+		if err := PublishSite(PublishOptions{SiteDir: site, SignKey: selector, SignKeySource: true, AttestPath: tool, commandRunner: runner,
+			buildSite: func(opts BuildOptions) error {
+				if opts.SignKey != selector {
+					t.Fatalf("build lost exact-key selector: %q", opts.SignKey)
+				}
+				return BuildSite(opts)
+			}}); err != nil {
+			t.Fatalf("explicit exact-key selector failed: %v", err)
+		}
+	})
+}

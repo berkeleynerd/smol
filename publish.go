@@ -13,34 +13,49 @@ import (
 )
 
 type PublishOptions struct {
-	SiteDir       string
-	OutDir        string
-	NoBuild       bool
-	SignKey       string
-	SignKeySource bool
-	Unsigned      bool
-	AttestPath    string
-	DryRun        bool
-	Host          string
-	User          string
-	Port          int
-	Path          string
-	HostSet       bool
-	UserSet       bool
-	PortSet       bool
-	PathSet       bool
-	Stdout        io.Writer
+	SiteDir               string
+	OutDir                string
+	NoBuild               bool
+	SignKey               string
+	SignKeySource         bool
+	AttestPath            string
+	Unsigned              bool
+	DryRun                bool
+	CheckSSH              bool
+	Mode                  string
+	Host                  string
+	User                  string
+	Port                  int
+	Path                  string
+	HostSet               bool
+	UserSet               bool
+	PortSet               bool
+	PathSet               bool
+	ModeSet               bool
+	IdentityFile          string
+	KnownHostsFile        string
+	HostKeyFingerprint    string
+	IdentityFileSet       bool
+	KnownHostsFileSet     bool
+	HostKeyFingerprintSet bool
+	Stdout                io.Writer
 
 	commandRunner publishCommandRunner
 	buildSite     func(BuildOptions) error
 }
 
 type publishTarget struct {
-	Method string
-	Host   string
-	User   string
-	Port   int
-	Path   string
+	Method             string
+	Mode               string
+	Host               string
+	User               string
+	Port               int
+	Path               string
+	IdentityFile       string
+	KnownHostsFile     string
+	HostKeyFingerprint string
+	hostKeyAlgorithms  string
+	knownHostsData     []byte
 }
 
 type publishCommand struct {
@@ -55,6 +70,15 @@ type publishCommandRunner interface {
 
 type execPublishCommandRunner struct{}
 
+const publishModeSwap = "swap"
+const publishModeInPlace = "in-place"
+
+type publishPlan struct {
+	commands []publishCommand
+	cleanup  *publishCommand
+	stage    string
+}
+
 func PublishSite(opts PublishOptions) error {
 	if opts.SiteDir == "" {
 		opts.SiteDir = "."
@@ -64,6 +88,12 @@ func PublishSite(opts PublishOptions) error {
 	}
 	if opts.Stdout == nil {
 		opts.Stdout = io.Discard
+	}
+	if opts.CheckSSH {
+		opts.NoBuild = true
+	}
+	if opts.CheckSSH && opts.DryRun {
+		return fmt.Errorf("--check-ssh cannot be combined with --dry-run")
 	}
 	if opts.NoBuild && opts.SignKey != "" && !opts.Unsigned {
 		return fmt.Errorf("--no-build skips the build phase, so signing cannot run")
@@ -83,8 +113,17 @@ func PublishSite(opts PublishOptions) error {
 	if !opts.Unsigned && opts.SignKey != "" && siteCfg.OutputMode == outputModeFlatGemini {
 		return fmt.Errorf("signing is not supported for flat-gemini-v1")
 	}
+	if target.KnownHostsFile != "" {
+		fmt.Fprintf(opts.Stdout, "ssh host-key pin: %s\n", target.HostKeyFingerprint)
+		if !opts.DryRun {
+			cleanup, err := freezePublishSSH(&target)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+		}
+	}
 	outDir := resolveOutputDir(siteDir, opts.OutDir)
-	commands := publishCommands(outDir, target)
 	if opts.DryRun {
 		if opts.NoBuild {
 			if err := validatePublishOutputDir(outDir); err != nil {
@@ -93,7 +132,32 @@ func PublishSite(opts PublishOptions) error {
 		} else if err := validateForceOutputDir(siteDir, outDir); err != nil {
 			return err
 		}
-		printPublishDryRun(opts.Stdout, siteDir, outDir, opts.NoBuild, commands)
+		plan, err := makePublishPlan(outDir, target, opts.NoBuild)
+		if err != nil {
+			return err
+		}
+		printPublishDryRun(opts.Stdout, siteDir, outDir, opts.NoBuild, plan.commands)
+		if !opts.NoBuild && target.Mode == publishModeInPlace {
+			fmt.Fprintln(opts.Stdout, "dry-run: output paths and remote destination checks are resolved after building")
+		}
+		return nil
+	}
+	runner := opts.commandRunner
+	if runner == nil {
+		runner = execPublishCommandRunner{}
+	}
+	if opts.CheckSSH {
+		if err := validatePublishOutputDir(outDir); err != nil {
+			return err
+		}
+		command, err := publishPreflightCommand(outDir, target)
+		if err != nil {
+			return err
+		}
+		if err := runner.Run(command); err != nil {
+			return err
+		}
+		fmt.Fprintf(opts.Stdout, "ssh checked: %s\n", publishRemoteSpec(target, target.Path))
 		return nil
 	}
 	gemini := siteCfg.OutputMode == outputModeFlatGemini
@@ -106,6 +170,9 @@ func PublishSite(opts PublishOptions) error {
 	if fingerprint == "" && !opts.SignKeySource {
 		fingerprint = strings.TrimSpace(siteCfg.SignKey)
 	}
+	// GPG's exact-key suffix selects a key for signing; the verifier pins its
+	// bare full fingerprint. Keep the original build/config selector unchanged.
+	fingerprint = strings.TrimSuffix(fingerprint, "!")
 	if !gemini && (opts.Unsigned || !fullFingerprintRE.MatchString(fingerprint)) {
 		return fmt.Errorf("HTML publication requires a full signing-key fingerprint; unsigned builds are for local preview")
 	}
@@ -151,14 +218,22 @@ func PublishSite(opts PublishOptions) error {
 	if err != nil {
 		return err
 	}
-	commands = publishCommands(snapshot, target)
-	commands[2].Stdin = remoteVerifyScript(remoteStagePath(target.Path), inventory) + commands[2].Stdin
-	runner := opts.commandRunner
-	if runner == nil {
-		runner = execPublishCommandRunner{}
+	plan, err := makePublishPlan(snapshot, target, true)
+	if err != nil {
+		return err
 	}
-	for _, command := range commands {
+	// Validate the exact stage selected by the transport before any activation.
+	verification := remoteVerifyScript(plan.stage, inventory)
+	if plan.cleanup != nil {
+		// Install cleanup in the same remote session before the gate can fail.
+		verification = "set -eu\nstage=" + posixSingleQuote(plan.stage) + "\ntrap 'rm -rf \"$stage\"' EXIT\n" + verification
+	}
+	plan.commands[2].Stdin = verification + plan.commands[2].Stdin
+	for _, command := range plan.commands {
 		if err := runner.Run(command); err != nil {
+			if plan.cleanup != nil {
+				_ = runner.Run(*plan.cleanup)
+			}
 			return err
 		}
 	}
@@ -172,11 +247,27 @@ func publishTargetFromConfig(cfg PublishConfig, opts PublishOptions) (publishTar
 		method = "scp"
 	}
 	target := publishTarget{
-		Method: method,
-		Host:   cfg.Host,
-		User:   cfg.User,
-		Port:   cfg.Port,
-		Path:   cfg.Path,
+		Method:             method,
+		Mode:               strings.TrimSpace(cfg.Mode),
+		Host:               cfg.Host,
+		User:               cfg.User,
+		Port:               cfg.Port,
+		Path:               cfg.Path,
+		IdentityFile:       cfg.IdentityFile,
+		KnownHostsFile:     cfg.KnownHostsFile,
+		HostKeyFingerprint: cfg.HostKeyFingerprint,
+	}
+	if opts.ModeSet {
+		target.Mode = opts.Mode
+	}
+	if opts.IdentityFileSet {
+		target.IdentityFile = opts.IdentityFile
+	}
+	if opts.KnownHostsFileSet {
+		target.KnownHostsFile = opts.KnownHostsFile
+	}
+	if opts.HostKeyFingerprintSet {
+		target.HostKeyFingerprint = opts.HostKeyFingerprint
 	}
 	if opts.HostSet {
 		target.Host = opts.Host
@@ -193,6 +284,12 @@ func publishTargetFromConfig(cfg PublishConfig, opts PublishOptions) (publishTar
 	if target.Port == 0 {
 		target.Port = 22
 	}
+	if target.Mode == "" {
+		target.Mode = publishModeSwap
+	}
+	if target.Mode != publishModeSwap && target.Mode != publishModeInPlace {
+		return publishTarget{}, fmt.Errorf("publish mode must be swap or in-place")
+	}
 	if target.Method != "scp" {
 		return publishTarget{}, fmt.Errorf("publish method must be scp")
 	}
@@ -206,6 +303,9 @@ func publishTargetFromConfig(cfg PublishConfig, opts PublishOptions) (publishTar
 		return publishTarget{}, fmt.Errorf("publish port must be between 1 and 65535")
 	}
 	if err := validateRemotePublishPath(target.Path); err != nil {
+		return publishTarget{}, err
+	}
+	if err := resolvePublishSSH(&target, opts.SiteDir); err != nil {
 		return publishTarget{}, err
 	}
 	return target, nil
@@ -295,11 +395,15 @@ func publishCommands(outDir string, target publishTarget) []publishCommand {
 }
 
 func sshArgs(target publishTarget) []string {
-	return []string{"-p", strconv.Itoa(target.Port), sshDestination(target), "sh", "-s"}
+	return append(publishSSHOptions(target), "-p", strconv.Itoa(target.Port), sshDestination(target), "sh", "-s")
 }
 
 func scpArgs(target publishTarget, outDir, remotePath string) []string {
-	return []string{"-P", strconv.Itoa(target.Port), "-r", scpSourceContents(outDir), publishRemoteSpec(target, remotePath)}
+	args := publishSSHOptions(target)
+	if target.Mode == publishModeInPlace {
+		args = append(args, "-p")
+	}
+	return append(args, "-P", strconv.Itoa(target.Port), "-r", scpSourceContents(outDir), publishRemoteSpec(target, remotePath))
 }
 
 func scpSourceContents(outDir string) string {

@@ -420,8 +420,16 @@ using `scp` and remote `ssh` commands. Configure the target in `smol.json`:
 }
 ```
 
-Publishing uses your normal SSH configuration, keys, agent, and `known_hosts`.
-It does not support passwords or secret fields in `smol.json`.
+Without explicit SSH settings, publishing uses your normal SSH configuration,
+keys, agent, and `known_hosts`. Optional `publish.identity_file`,
+`publish.known_hosts_file`, and `publish.host_key_fingerprint` fields select an
+identity and a pinned server key. The known-host file and SHA256 fingerprint
+must be supplied together; smol checks their agreement before building or
+connecting, freezes the validated public key for the transfer, and uses strict
+host-key checking. Explicit SSH settings require batch public-key authentication.
+Local paths are relative to the site directory; `~/` expands to the user's home.
+The corresponding CLI overrides are `--identity-file`, `--known-hosts-file`,
+and `--host-key-fingerprint`. Private key contents do not belong in `smol.json`.
 
 ```sh
 smol publish
@@ -430,6 +438,8 @@ smol publish --no-build
 smol publish --sign
 smol publish --sign-key FINGERPRINT
 smol publish --dry-run
+smol publish --check-ssh
+smol publish --mode in-place
 smol publish --host example.org --user deploy --port 2222 --path /var/www/example
 ```
 
@@ -445,9 +455,26 @@ signature with `attest verify --trusted FINGERPRINT`. Each gzip sibling must
 decompress to its matching signed page. Symlinks and special files are rejected.
 Only that verified snapshot is uploaded. The remote host requires exactly the
 expected files and directories, including empty directories, rejects symlinks and
-special files, and checks SHA-256 hashes before replacing the live directory, using `sha256sum`,
+special files, and checks SHA-256 hashes before activating the output, using `sha256sum`,
 OpenBSD `sha256`, or `shasum`. Extra files or directories fail the check.
 A failed check leaves the live site in place.
+
+The default `publish.mode` is `"swap"`: the destination directory is replaced,
+which requires write access to its parent. Use `"mode": "in-place"` or
+`--mode in-place` when only the existing web root is writable. That mode stages
+inside the web root, applies the same exact inventory/hash gate to the upload,
+then replaces files individually by rename. It never renames or chmods the web
+root or writes to its parent, and retains existing remote files absent from the
+verified snapshot. Replacements are individually atomic; the entire update is
+not, so readers can briefly see old and new pages together. Failed transfers or
+verification leave existing pages in place; an installation failure can leave a
+partially updated site. Unique staging cleanup is attempted on failure.
+
+`--check-ssh` checks existing output paths, SSH access, and destination permissions
+without building, uploading, or creating staging directories. It does not certify
+signatures or perform a deployment, and cannot be combined with `--dry-run` or
+active signing flags.
+
 `--attest PATH` selects the signer/verifier. Gemini publication retains its
 separate unsigned behavior.
 

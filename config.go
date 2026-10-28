@@ -30,11 +30,15 @@ type SiteConfig struct {
 }
 
 type PublishConfig struct {
-	Method string `json:"method"`
-	Host   string `json:"host"`
-	User   string `json:"user"`
-	Port   int    `json:"port"`
-	Path   string `json:"path"`
+	Method             string `json:"method"`
+	Mode               string `json:"mode"`
+	Host               string `json:"host"`
+	User               string `json:"user"`
+	Port               int    `json:"port"`
+	Path               string `json:"path"`
+	IdentityFile       string `json:"identity_file"`
+	KnownHostsFile     string `json:"known_hosts_file"`
+	HostKeyFingerprint string `json:"host_key_fingerprint"`
 }
 
 type ThemeConfig struct {
