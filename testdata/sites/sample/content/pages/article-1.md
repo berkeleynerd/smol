@@ -5,7 +5,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer vitae lectus at
 
 Curabitur porta, justo non facilisis dignissim, ipsum augue posuere nibh, at cursus ante neque sed erat.
 
-### Sample Heading
+## Sample Heading
 
 Donec vitae arcu non mi porta facilisis. Sed finibus, nibh in lacinia congue, erat lacus ultricies neque, sed tincidunt mi dolor vitae ipsum.
 

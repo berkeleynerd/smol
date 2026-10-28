@@ -30,14 +30,14 @@ func TestRelativeHrefForOutputModes(t *testing.T) {
 			name:        "flat xhtml page to index",
 			fromRoute:   "/sample.html",
 			targetRoute: "/",
-			outputMode:  outputModeFlatXHTML,
+			outputMode:  routingFlat,
 			want:        "index.html",
 		},
 		{
 			name:        "flat xhtml page to page",
 			fromRoute:   "/sample.html",
 			targetRoute: "/about.html",
-			outputMode:  outputModeFlatXHTML,
+			outputMode:  routingFlat,
 			want:        "about.html",
 		},
 		{

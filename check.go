@@ -5,14 +5,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
-const checkModeDefault = "default"
-
-// Unclosed style blocks are scanned to EOF so edited or foreign files fail safe.
-var inlineStyleRE = regexp.MustCompile(`(?is)<style\b[^>]*>(.*?)(?:</style\s*>|\z)`)
+const checkModeDefault = "xhtml5"
 
 type CheckOptions struct {
 	Path   string
@@ -98,15 +94,15 @@ func normalizeCheckMode(mode string) (string, error) {
 	if mode == "" || mode == checkModeDefault {
 		return checkModeDefault, nil
 	}
-	if mode == outputModeFlatXHTML || mode == outputModeFlatGemini {
+	if mode == outputModeFlatGemini {
 		return mode, nil
 	}
-	return "", fmt.Errorf("invalid check mode: %s", mode)
+	return "", fmt.Errorf("invalid check mode: %s; use xhtml5 for either HTML routing layout, or flat-gemini-v1 for Gemini", mode)
 }
 
 func isCheckableFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".html", ".xhtml", ".gmi":
+	case ".html", ".htm", ".xhtml", ".gmi":
 		return true
 	default:
 		return false
@@ -125,23 +121,15 @@ func checkOneFile(path, mode string) error {
 	if mode == outputModeFlatGemini {
 		return fmt.Errorf("flat-gemini-v1 checks only .gmi files")
 	}
-	return CheckHTML(string(data), mode)
-}
-
-func CheckHTML(html, mode string) error {
-	if err := ValidateHTMLForMode(html, mode); err != nil {
-		if mode == checkModeDefault && ValidateHTMLForMode(html, outputModeFlatXHTML) == nil {
-			return fmt.Errorf("%w; use --mode flat-xhtml-v1 for flat XHTML output", err)
-		}
+	if err := CheckHTML(string(data)); err != nil {
 		return err
 	}
-	for i, match := range inlineStyleRE.FindAllStringSubmatch(html, -1) {
-		if len(match) < 2 {
-			continue
-		}
-		if err := ValidateCSS(match[1]); err != nil {
-			return fmt.Errorf("inline style %d: %w", i+1, err)
-		}
+	return ValidateXHTMLDocument(string(data))
+}
+
+func CheckHTML(html string) error {
+	if err := ValidateHTML(html); err != nil {
+		return err
 	}
 	m, ok, err := ExtractManifest(html)
 	if err != nil {

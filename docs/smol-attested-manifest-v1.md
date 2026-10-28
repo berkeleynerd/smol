@@ -1,15 +1,18 @@
 # SMOL ATTESTED MANIFEST V1
 
-`SMOL ATTESTED MANIFEST V1` is a base64-encoded JSON comment embedded in nested
-HTML output.
+`SMOL ATTESTED MANIFEST V1` is a base64-encoded JSON comment embedded by both
+starter themes in XHTML5 output, with either directory or flat routing.
 
 When signing is enabled, the manifest is inside the HTML payload that `attest`
 / `attested-html` signs. It is covered by the whole-page signature in signed
-output, but it is not itself a separate signature format. Unsigned nested HTML
+output, but it is not itself a separate signature format. Unsigned XHTML
 builds still include the manifest comment without a signature.
 
-`flat-xhtml-v1` and `flat-gemini-v1` outputs do not currently emit this
-manifest.
+Custom themes may omit the manifest. Authorship verification requires the
+whole-page signature and expected key, without a mandatory canonical URL,
+allowed-origin list, or resource inventory. These fields describe signed
+publisher claims; unchanged signed copies can authenticate on other origins.
+`flat-gemini-v1` output does not emit the manifest.
 
 ## Wrapper
 
@@ -65,7 +68,7 @@ Current manifests emit these fields:
 
 `profile` uses the canonical slash-form identifier `smol/static-nojs-v1`.
 `regions` is optional and is omitted when the rendered HTML has no recognized
-region markers. When a nested HTML file has recognized region markers, `smol`
+region markers. When an XHTML file has recognized region markers, `smol`
 emits matching `regions` entries.
 
 ## Resources
@@ -144,6 +147,6 @@ Region hashes are provenance and drift-check aids, not independent signatures
 and not a tamper-resistance claim. The authoritative v1 security claim remains
 the whole generated page signature produced by `attest` / `attested-html`.
 
-The manifest must remain outside hashed regions. `smol build` renders nested
-HTML manifests in two passes and rejects pages whose final region hashes differ
+The manifest must remain outside hashed regions. `smol build` renders XHTML
+manifests in two passes and rejects pages whose final region hashes differ
 from the hashes computed before the region metadata was embedded.

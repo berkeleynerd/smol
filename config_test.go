@@ -26,6 +26,9 @@ func TestMinimalSmolJSONLoadsWithDefaults(t *testing.T) {
 	if cfg.Theme != "default" {
 		t.Fatalf("Theme = %q, want default", cfg.Theme)
 	}
+	if cfg.OutputMode != outputModeXHTML5 || cfg.Routing != routingDirectory {
+		t.Fatalf("default output must be XHTML5 with directory routing: %#v", cfg)
+	}
 	if len(cfg.Nav) != 0 {
 		t.Fatalf("Nav length = %d, want 0", len(cfg.Nav))
 	}

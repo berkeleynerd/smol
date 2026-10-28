@@ -267,8 +267,8 @@ func applyConformanceTamper(siteDir string, tamper conformanceTamper) error {
 
 func conformanceCheckMode(outputMode string) string {
 	switch outputMode {
-	case outputModeFlatXHTML:
-		return outputModeFlatXHTML
+	case outputModeXHTML5:
+		return outputModeXHTML5
 	case outputModeFlatGemini:
 		return outputModeFlatGemini
 	default:
@@ -285,7 +285,7 @@ func loadConformanceSite(siteDir string) error {
 	if err != nil {
 		return err
 	}
-	_, _, err = resolvePageNavigations(pages, posts, cfg.OutputMode)
+	_, _, err = resolvePageNavigations(pages, posts, cfg.routeStyle())
 	return err
 }
 

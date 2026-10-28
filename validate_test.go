@@ -16,14 +16,17 @@ func TestCSSURLIsRejected(t *testing.T) {
 
 func TestCSSAllowsSafeInput(t *testing.T) {
 	cases := map[string]string{
-		"scroll-behavior":          `scroll-behavior:smooth`,
-		"overscroll-behavior":      `overscroll-behavior:none`,
-		"scroll-behavior in rule":  `html { scroll-behavior:smooth; }`,
-		"overscroll behavior axis": `body { overscroll-behavior-x:contain; }`,
-		"url word in comment":      `/* no url() assets bundled */ body { color: #000; }`,
-		"import word in comment":   `/* @import is intentionally avoided */ a { color: red; }`,
-		"behavior word in comment": `/* avoids the IE behavior: htc trick */ p { margin: 0; }`,
-		"dangerous rule commented": `/* body { background: url(x.png); } */ p { margin: 0; }`,
+		"scroll-behavior":               `scroll-behavior:smooth`,
+		"overscroll-behavior":           `overscroll-behavior:none`,
+		"scroll-behavior in rule":       `html { scroll-behavior:smooth; }`,
+		"overscroll behavior axis":      `body { overscroll-behavior-x:contain; }`,
+		"url word in comment":           `/* no url() assets bundled */ body { color: #000; }`,
+		"import word in comment":        `/* @import is intentionally avoided */ a { color: red; }`,
+		"behavior word in comment":      `/* avoids the IE behavior: htc trick */ p { margin: 0; }`,
+		"dangerous rule commented":      `/* body { background: url(x.png); } */ p { margin: 0; }`,
+		"comment delimiters in strings": `p::before { content: "/* url(x) @import */"; }`,
+		"quoted resource words":         `p::before { content: 'url(x) expression(x) behavior:'; }`,
+		"escaped quote":                 `p::before { content: "a\\\"/*"; color: red; }`,
 	}
 	for name, css := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -36,17 +39,28 @@ func TestCSSAllowsSafeInput(t *testing.T) {
 
 func TestCSSRejectsDangerousInput(t *testing.T) {
 	cases := map[string]string{
-		"url function":           `body { background: url(x.png); }`,
-		"import":                 `@import 'x.css';`,
-		"expression":             `div { width: expression(alert(1)); }`,
-		"ie behavior with url":   `body { behavior: url(evil.htc); }`,
-		"ie behavior bare":       `body { behavior: default; }`,
-		"ie behavior at start":   `behavior:url(evil.htc)`,
-		"ie behavior spaced":     `body { behavior : url(evil.htc); }`,
-		"ie star behavior":       `body { *behavior: default; }`,
-		"ie underscore behavior": `body { _behavior: default; }`,
-		"moz binding":            `a { -moz-binding: thing; }`,
-		"url outside comment":    `/* themed */ body { background: url(x.png); }`,
+		"url function":             `body { background: url(x.png); }`,
+		"import":                   `@import 'x.css';`,
+		"expression":               `div { width: expression(alert(1)); }`,
+		"ie behavior with url":     `body { behavior: url(evil.htc); }`,
+		"ie behavior bare":         `body { behavior: default; }`,
+		"ie behavior at start":     `behavior:url(evil.htc)`,
+		"ie behavior spaced":       `body { behavior : url(evil.htc); }`,
+		"ie star behavior":         `body { *behavior: default; }`,
+		"ie underscore behavior":   `body { _behavior: default; }`,
+		"moz binding":              `a { -moz-binding: thing; }`,
+		"url outside comment":      `/* themed */ body { background: url(x.png); }`,
+		"quoted comment bypass":    `p::before{content:"/*"} body{background-image:url("https://example.invalid/image")} p::after{content:"*/"}`,
+		"attribute comment bypass": `--a:'/*'; background-image:url('https://example.invalid/image'); --b:'*/'`,
+		"escaped import":           `@\69mport "https://example.invalid/style";`,
+		"escaped URL":              `p{background:u\72l("https://example.invalid/image")}`,
+		"six digit URL escape":     `p{background:\000075rl("https://example.invalid/image")}`,
+		"CRLF escape terminator":   "p{background:\\75\r\nrl(https://example.invalid/image)}",
+		"escaped image set":        `p{background:i\6d age-set("https://example.invalid/image" 1x)}`,
+		"escaped simple URL":       `p{background:u\rl("https://example.invalid/image")}`,
+		"escaped behavior":         `p{b\65havior:default}`,
+		"bad URL":                  `p{background:url(bad"url)}`,
+		"bad string":               "p{content:\"bad\nstring\"}",
 	}
 	for name, css := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -100,7 +114,7 @@ func TestFinalHTMLContainingExternalImageReferencesIsRejected(t *testing.T) {
 }
 
 func TestFinalHTMLAllowsEmbeddedImageDataURL(t *testing.T) {
-	if err := ValidateHTML(`<img src="data:image/png;base64,AA==" alt="x">`); err != nil {
+	if err := ValidateHTML(`<img src="data:image/png;base64,AA==" alt="x" />`); err != nil {
 		t.Fatalf("ValidateHTML rejected embedded image: %v", err)
 	}
 }
@@ -127,41 +141,61 @@ func TestExternalAnchorLinksAreAllowed(t *testing.T) {
 	}
 }
 
-func TestDefaultHTMLRejectsSVG(t *testing.T) {
-	if err := ValidateHTML(`<svg role="img"><title>Clean</title></svg>`); err == nil {
-		t.Fatalf("ValidateHTML accepted SVG in default mode")
+func TestXHTMLAllowsSVG(t *testing.T) {
+	if err := ValidateHTML(`<svg xmlns="http://www.w3.org/2000/svg" role="img"><title>Clean</title></svg>`); err != nil {
+		t.Fatalf("ValidateHTML rejected clean namespaced SVG")
 	}
 }
 
-func TestFlatXHTMLAllowsCanonicalCheckbox(t *testing.T) {
+func TestXHTMLAllowsFootnoteCheckbox(t *testing.T) {
 	html := `<span><input type="checkbox" id="cb12" /><label for="cb12"><sup>12</sup></label><span>Note.</span></span>`
-	if err := ValidateHTMLForMode(html, outputModeFlatXHTML); err != nil {
-		t.Fatalf("ValidateHTMLForMode rejected canonical checkbox: %v", err)
+	if err := ValidateHTML(html); err != nil {
+		t.Fatalf("ValidateHTML rejected canonical checkbox: %v", err)
 	}
 }
 
-func TestFlatXHTMLRejectsMalformedCheckbox(t *testing.T) {
+func TestXHTMLAllowsReorderedCheckboxAttributes(t *testing.T) {
 	html := `<input id="cb12" type="checkbox" />`
-	if err := ValidateHTMLForMode(html, outputModeFlatXHTML); err == nil {
-		t.Fatalf("ValidateHTMLForMode accepted malformed checkbox")
+	if err := ValidateHTML(html); err != nil {
+		t.Fatalf("ValidateHTML rejected reordered checkbox attributes: %v", err)
 	}
 }
 
-func TestDefaultHTMLRejectsCanonicalCheckbox(t *testing.T) {
+func TestXHTMLAllowsCanonicalCheckbox(t *testing.T) {
 	html := `<input type="checkbox" id="cb12" />`
-	if err := ValidateHTML(html); err == nil {
-		t.Fatalf("ValidateHTML accepted checkbox in default mode")
+	if err := ValidateHTML(html); err != nil {
+		t.Fatalf("ValidateHTML rejected checkbox: %v", err)
 	}
 }
 
-func TestFlatXHTMLAllowsCleanSVG(t *testing.T) {
-	html := `<svg role="img" viewBox="0 0 1 1"><title>Clean</title><path d="M0 0h1v1z"/></svg>`
-	if err := ValidateHTMLForMode(html, outputModeFlatXHTML); err != nil {
-		t.Fatalf("ValidateHTMLForMode rejected clean SVG: %v", err)
+func TestXHTMLRejectsNoncanonicalInputs(t *testing.T) {
+	cases := []string{
+		`<input type="text" id="cb12" />`,
+		`<input type="checkbox" />`,
+		`<input type="checkbox" id="other12" />`,
+		`<input type="checkbox" id="cb12" name="choice" />`,
+		`<input type="checkbox" id="cb12" value="yes" />`,
+		`<input type="checkbox" id="cb12" form="other" />`,
+		`<input type="checkbox" id="cb12" checked="checked" />`,
+		`<input type="checkbox" id="cb12" style="display:none" />`,
+	}
+	for _, input := range cases {
+		t.Run(input, func(t *testing.T) {
+			if err := ValidateXHTMLDocument(xhtmlDocument("", input)); err == nil {
+				t.Fatalf("accepted noncanonical input: %s", input)
+			}
+		})
 	}
 }
 
-func TestFlatXHTMLRejectsUnsafeSVG(t *testing.T) {
+func TestXHTMLAllowsCleanSVG(t *testing.T) {
+	html := `<svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 1 1"><title>Clean</title><path d="M0 0h1v1z"/></svg>`
+	if err := ValidateHTML(html); err != nil {
+		t.Fatalf("ValidateHTML rejected clean SVG: %v", err)
+	}
+}
+
+func TestXHTMLRejectsUnsafeSVG(t *testing.T) {
 	tests := map[string]string{
 		"event":        `<svg onload="alert(1)"></svg>`,
 		"script":       `<svg><script>alert(1)</script></svg>`,
@@ -170,8 +204,8 @@ func TestFlatXHTMLRejectsUnsafeSVG(t *testing.T) {
 	}
 	for name, html := range tests {
 		t.Run(name, func(t *testing.T) {
-			if err := ValidateHTMLForMode(html, outputModeFlatXHTML); err == nil {
-				t.Fatalf("ValidateHTMLForMode accepted unsafe SVG")
+			if err := ValidateHTML(html); err == nil {
+				t.Fatalf("ValidateHTML accepted unsafe SVG")
 			}
 		})
 	}

@@ -57,7 +57,7 @@
   },
   {
     "name": "explicit-navigation-flat-xhtml",
-    "output_mode": "flat-xhtml-v1",
+    "output_mode": "xhtml5",
     "action": "check",
     "expect": "pass",
     "starter": "classic-xhtml",
@@ -75,11 +75,11 @@
           "<a href=\"index.html\" rel=\"home\">Home</a>",
           "<a href=\"about.html\" rel=\"up\">Up: About</a>",
           "<a href=\"index.html\" rel=\"previous\">Previous: Home</a>",
-          "<a href=\"about.html\" rel=\"related\">Related: About</a>"
+          "<a href=\"about.html\" rel=\"related\">Related: About</a>",
+          "SMOL ATTESTED MANIFEST V1"
         ],
         "not_contains": [
-          "href=\"/\"",
-          "SMOL ATTESTED MANIFEST V1"
+          "href=\"/\""
         ]
       }
     ]
@@ -128,7 +128,7 @@
   },
   {
     "name": "no-links-flat-xhtml-byte-boundary",
-    "output_mode": "flat-xhtml-v1",
+    "output_mode": "xhtml5",
     "action": "build",
     "expect": "pass",
     "starter": "classic-xhtml",
@@ -136,11 +136,11 @@
       {
         "file": "public/sample.html",
         "contains": [
-          "</main>\n</body>"
+          "</main>\n</body>",
+          "SMOL ATTESTED MANIFEST V1"
         ],
         "not_contains": [
-          "</main>\n\n</body>",
-          "SMOL ATTESTED MANIFEST V1"
+          "</main>\n\n</body>"
         ]
       }
     ]
@@ -273,7 +273,7 @@
     "expect": "fail",
     "fixture": "invalid/check-unsafe-inline-css",
     "check_path": "checked/bad.html",
-    "error_substring": "inline style 1"
+    "error_substring": "inline style"
   },
   {
     "name": "check-unsafe-unclosed-style",
@@ -282,7 +282,7 @@
     "expect": "fail",
     "fixture": "invalid/check-unsafe-unclosed-style",
     "check_path": "checked/bad.html",
-    "error_substring": "inline style 1"
+    "error_substring": "element <style> cannot contain child elements"
   },
   {
     "name": "check-malformed-manifest",
@@ -344,12 +344,19 @@
     "error_substring": "invalid gemtext link"
   },
   {
-    "name": "check-flat-xhtml-feature-default",
+    "name": "check-inert-checkbox",
     "output_mode": "",
     "action": "check",
-    "expect": "fail",
-    "fixture": "invalid/check-flat-xhtml-feature-default",
-    "check_path": "checked/bad.html",
-    "error_substring": "interactive HTML is not supported"
+    "expect": "pass",
+    "fixture": "valid/check-inert-checkbox",
+    "check_path": "checked/ok.html",
+    "assertions": [
+      {
+        "file": "checked/ok.html",
+        "contains": [
+          "<input type=\"checkbox\" id=\"cb12\" />"
+        ]
+      }
+    ]
   }
 ]

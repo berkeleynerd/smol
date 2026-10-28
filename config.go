@@ -23,6 +23,7 @@ type SiteConfig struct {
 	Publisher   string        `json:"publisher"`
 	Theme       string        `json:"theme"`
 	OutputMode  string        `json:"output_mode"`
+	Routing     string        `json:"routing"`
 	SignKey     string        `json:"sign_key"`
 	Nav         []NavItem     `json:"nav"`
 	Publish     PublishConfig `json:"publish"`
@@ -52,7 +53,9 @@ type ThemeTemplates struct {
 }
 
 const (
-	outputModeFlatXHTML  = "flat-xhtml-v1"
+	outputModeXHTML5     = "xhtml5"
+	routingFlat          = "flat"
+	routingDirectory     = "directory"
 	outputModeFlatGemini = "flat-gemini-v1"
 )
 
@@ -101,8 +104,17 @@ func LoadSiteConfig(siteDir string) (SiteConfig, error) {
 	if cfg.Theme == "" {
 		cfg.Theme = "default"
 	}
-	if cfg.OutputMode != "" && cfg.OutputMode != outputModeFlatXHTML && cfg.OutputMode != outputModeFlatGemini {
-		return SiteConfig{}, fmt.Errorf("invalid smol.json: output_mode must be %s or %s", outputModeFlatXHTML, outputModeFlatGemini)
+	if cfg.OutputMode == "" {
+		cfg.OutputMode = outputModeXHTML5
+	}
+	if cfg.OutputMode != outputModeXHTML5 && cfg.OutputMode != outputModeFlatGemini {
+		return SiteConfig{}, fmt.Errorf("invalid smol.json: output_mode must be %s or %s; replace flat-xhtml-v1 with output_mode: %q and routing: %q", outputModeXHTML5, outputModeFlatGemini, outputModeXHTML5, routingFlat)
+	}
+	if cfg.Routing == "" {
+		cfg.Routing = routingDirectory
+	}
+	if cfg.Routing != routingFlat && cfg.Routing != routingDirectory {
+		return SiteConfig{}, fmt.Errorf("routing must be flat or directory")
 	}
 	if cfg.OutputMode == outputModeFlatGemini && u.Scheme != "gemini" {
 		return SiteConfig{}, fmt.Errorf("invalid smol.json: flat-gemini-v1 requires a gemini:// base_url")
@@ -114,10 +126,6 @@ func LoadSiteConfig(siteDir string) (SiteConfig, error) {
 }
 
 func LoadThemeConfig(themeDir string) (ThemeConfig, error) {
-	return LoadThemeConfigForMode(themeDir, "")
-}
-
-func LoadThemeConfigForMode(themeDir, outputMode string) (ThemeConfig, error) {
 	data, err := os.ReadFile(filepath.Join(themeDir, "theme.json"))
 	if err != nil {
 		return ThemeConfig{}, err
@@ -138,13 +146,20 @@ func LoadThemeConfigForMode(themeDir, outputMode string) (ThemeConfig, error) {
 	if cfg.Templates.Page == "" {
 		return ThemeConfig{}, fmt.Errorf("invalid theme.json: templates.page is required")
 	}
-	if outputMode != outputModeFlatXHTML && cfg.Templates.Post == "" {
-		return ThemeConfig{}, fmt.Errorf("invalid theme.json: templates.post is required")
+	if cfg.Templates.Post == "" {
+		cfg.Templates.Post = cfg.Templates.Page
 	}
 	if cfg.CSS == nil {
 		cfg.CSS = []string{}
 	}
 	return cfg, nil
+}
+
+func (cfg SiteConfig) routeStyle() string {
+	if cfg.OutputMode == outputModeFlatGemini {
+		return outputModeFlatGemini
+	}
+	return cfg.Routing
 }
 
 func siteView(cfg SiteConfig) (SiteView, error) {

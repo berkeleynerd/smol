@@ -202,7 +202,7 @@ func loadContentSource(site SiteConfig, kind, slug, sourcePath, contentDir strin
 	if meta.Links != nil {
 		links = *meta.Links
 	}
-	route := routeFor(kind, slug, site.OutputMode)
+	route := routeFor(kind, slug, site.routeStyle())
 	return Page{
 		Kind:         kind,
 		Title:        resolveContentTitle(meta.Title, slug),
@@ -239,7 +239,7 @@ func bodyFormatForExtension(ext string) string {
 }
 
 func validateContentMeta(meta ContentMeta, expectedKind, slug, bodyFormat, outputMode string) error {
-	if (outputMode == outputModeFlatXHTML || outputMode == outputModeFlatGemini) && expectedKind != "page" {
+	if outputMode == outputModeFlatGemini && expectedKind != "page" {
 		return fmt.Errorf("%s supports only pages", outputMode)
 	}
 	if !slugRE.MatchString(slug) {
