@@ -53,6 +53,13 @@ It covers stylesheets, XML-decoded style attributes, and SVG attribute values.
 Comment delimiters inside a quoted string do not remove live declarations.
 All CSS `url()` functions, including SVG `url(#id)`, remain unsupported.
 
+Source-dialect extensions do not extend this output policy. Restricted text
+annotations may render through existing `span`, `sup`, `a`, and `br` elements
+with fixed classes, but still pass the same element, attribute, ID, content-model,
+CSS, and resource checks. Markdown source remains free of raw HTML and HTML
+entities; annotation syntax is not an HTML passthrough. Paragraph boundaries in
+an inline note must not introduce block elements inside a phrasing container.
+
 ## Structural Regions
 
 Regions are a vocabulary for understanding generated output. Shipped starter
@@ -170,6 +177,11 @@ render passes.
 Gemini output does not carry an embedded manifest. Manifest presence, canonical
 URLs, and allowed-origin lists are not required for authorship authentication.
 Unchanged signed bytes can authenticate on a mirror or offline.
+The optional-manifest choice does not change static-profile conformance or
+whole-page expected-key verification. If a manifest is present, its format,
+profile, policy fields, and declared known-region hashes must validate. If it is
+absent, only those optional metadata checks are skipped. A manifest comment in
+unsigned output authenticates nothing, and `smol check` does not verify signatures.
 
 ## Publication
 
