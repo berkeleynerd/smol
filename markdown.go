@@ -20,6 +20,7 @@ type markdownRenderState struct {
 	blockquoteDepth int
 	tocEntries      []TOCEntry
 	tocIDs          map[string]bool
+	annotated       *annotatedMarkdownState
 }
 
 type inlineOptions struct {
@@ -139,7 +140,7 @@ func renderMarkdownBlocks(lines []string, state *markdownRenderState) (string, e
 
 		if i+1 < len(lines) {
 			if level, ok := setextHeadingLevel(lines[i+1]); ok && strings.TrimSpace(lines[i]) != "" {
-				bodySource, id := parseHeadingID(strings.TrimSpace(lines[i]))
+				bodySource, id := parseHeadingIDForState(strings.TrimSpace(lines[i]), state)
 				body, err := renderInline(bodySource, state)
 				if err != nil {
 					return "", err
@@ -164,7 +165,7 @@ func renderMarkdownBlocks(lines []string, state *markdownRenderState) (string, e
 			continue
 		}
 
-		if table, next, ok := parseTableBlock(lines, i); ok {
+		if table, next, ok := parseTableBlock(lines, i, state); ok {
 			rendered, err := renderTable(table, state)
 			if err != nil {
 				return "", err
@@ -194,7 +195,7 @@ func renderMarkdownBlocks(lines []string, state *markdownRenderState) (string, e
 			continue
 		}
 
-		paragraph, next := collectParagraph(lines, i)
+		paragraph, next := collectParagraph(lines, i, state)
 		body, err := renderInline(strings.Join(paragraph, "\n"), state)
 		if err != nil {
 			return "", err
@@ -291,7 +292,7 @@ func renderMarkdownGemtextBlocks(lines []string, state *markdownRenderState) (st
 			continue
 		}
 
-		if table, next, ok := parseTableBlock(lines, i); ok {
+		if table, next, ok := parseTableBlock(lines, i, state); ok {
 			rendered, err := renderMarkdownGemtextTable(table, state)
 			if err != nil {
 				return "", err
@@ -321,7 +322,7 @@ func renderMarkdownGemtextBlocks(lines []string, state *markdownRenderState) (st
 			continue
 		}
 
-		paragraph, next := collectParagraph(lines, i)
+		paragraph, next := collectParagraph(lines, i, state)
 		text, links, err := renderMarkdownGemtextInline(strings.Join(paragraph, " "), state)
 		if err != nil {
 			return "", err
@@ -674,7 +675,7 @@ func renderATXHeading(line string, state *markdownRenderState) (string, bool, er
 		body = strings.TrimRight(body, "#")
 		body = strings.TrimSpace(body)
 	}
-	body, id := parseHeadingID(body)
+	body, id := parseHeadingIDForState(body, state)
 	rendered, err := renderInline(body, state)
 	if err != nil {
 		return "", true, err
@@ -703,10 +704,23 @@ func parseHeadingID(body string) (string, string) {
 // heading must emit.
 func collectTOCHeading(state *markdownRenderState, level int, body, id string) (string, error) {
 	if !state.collectTOC {
+		if state.annotated != nil && id != "" {
+			if err := state.annotated.registerID(id, false); err != nil {
+				return "", err
+			}
+		}
 		return id, nil
 	}
 	eligible := level == 2 && state.blockquoteDepth == 0
 	tocSource := strings.TrimSpace(stripTOCMarkup(body))
+	if state.annotated != nil {
+		var err error
+		tocSource, err = annotatedTOCSource(body)
+		if err != nil {
+			return "", err
+		}
+		tocSource = strings.TrimSpace(stripTOCMarkup(tocSource))
+	}
 	if id == "" && eligible {
 		id = slugifyHeadingID(tocSource)
 		if id == "" {
@@ -718,6 +732,11 @@ func collectTOCHeading(state *markdownRenderState, level int, body, id string) (
 	}
 	if state.tocIDs[id] {
 		return "", fmt.Errorf("duplicate heading anchor %q; add an explicit {#id} to disambiguate", id)
+	}
+	if state.annotated != nil {
+		if err := state.annotated.registerID(id, false); err != nil {
+			return "", err
+		}
 	}
 	if len(state.defs) > 0 && footnoteAnchorIDRE.MatchString(id) {
 		return "", fmt.Errorf("heading anchor %q collides with footnote checkbox ids; choose a different {#id}", id)
@@ -942,12 +961,16 @@ func isHorizontalRule(line string) bool {
 	return count >= 3
 }
 
-func parseTableBlock(lines []string, start int) (tableBlock, int, bool) {
+func parseTableBlock(lines []string, start int, state *markdownRenderState) (tableBlock, int, bool) {
 	if start+1 >= len(lines) || !strings.Contains(lines[start], "|") {
 		return tableBlock{}, start, false
 	}
-	headers := splitTableRow(lines[start])
-	separator := splitTableRow(lines[start+1])
+	split := splitTableRow
+	if state.annotated != nil {
+		split = splitAnnotatedTableRow
+	}
+	headers := split(lines[start])
+	separator := split(lines[start+1])
 	if len(headers) == 0 || len(headers) != len(separator) {
 		return tableBlock{}, start, false
 	}
@@ -962,7 +985,7 @@ func parseTableBlock(lines []string, start int) (tableBlock, int, bool) {
 		if strings.TrimSpace(lines[i]) == "" || !strings.Contains(lines[i], "|") {
 			break
 		}
-		row := splitTableRow(lines[i])
+		row := split(lines[i])
 		if len(row) != len(headers) {
 			break
 		}
@@ -1239,14 +1262,14 @@ func listContentIndent(line string, marker listMarker) int {
 	return base + 2
 }
 
-func collectParagraph(lines []string, start int) ([]string, int) {
+func collectParagraph(lines []string, start int, state *markdownRenderState) ([]string, int) {
 	block := []string{}
 	i := start
 	for i < len(lines) {
 		if strings.TrimSpace(lines[i]) == "" {
 			break
 		}
-		if len(block) > 0 && isMarkdownBlockStart(lines, i) {
+		if len(block) > 0 && isMarkdownBlockStart(lines, i, state) {
 			break
 		}
 		block = append(block, lines[i])
@@ -1255,7 +1278,7 @@ func collectParagraph(lines []string, start int) ([]string, int) {
 	return block, i
 }
 
-func isMarkdownBlockStart(lines []string, i int) bool {
+func isMarkdownBlockStart(lines []string, i int, state *markdownRenderState) bool {
 	if _, ok := fencedCodeMarker(lines[i]); ok {
 		return true
 	}
@@ -1268,7 +1291,7 @@ func isMarkdownBlockStart(lines []string, i int) bool {
 	if _, ok := parseListMarker(lines[i]); ok {
 		return true
 	}
-	if _, _, ok := parseTableBlock(lines, i); ok {
+	if _, _, ok := parseTableBlock(lines, i, state); ok {
 		return true
 	}
 	return false
@@ -1279,6 +1302,9 @@ func renderInline(text string, state *markdownRenderState) (string, error) {
 }
 
 func renderInlineWithOptions(text string, state *markdownRenderState, opts inlineOptions) (string, error) {
+	if state.annotated != nil {
+		return renderAnnotatedInline(text, state, opts, annotatedInlineContext{})
+	}
 	var out strings.Builder
 	for i := 0; i < len(text); {
 		if text[i] == '\\' {

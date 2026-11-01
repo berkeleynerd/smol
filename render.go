@@ -350,7 +350,11 @@ func renderPageBody(page Page, site SiteView, nav []NavItem) (string, []Manifest
 			return "", nil, nil, err
 		}
 		var resources []ManifestResource
-		html, toc, err := RenderMarkdownXHTMLDocument(string(body), func(path, alt, title string) (string, error) {
+		renderMarkdown := RenderMarkdownXHTMLDocument
+		if hasAnnotatedTextExtension(page.markdownExtensions) {
+			renderMarkdown = RenderAnnotatedMarkdownXHTMLDocument
+		}
+		html, toc, err := renderMarkdown(string(body), func(path, alt, title string) (string, error) {
 			html, resource, err := embedImageWithTitle(page, path, alt, title)
 			if err != nil {
 				return "", err
