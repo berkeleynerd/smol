@@ -87,6 +87,9 @@ func renderGeminiPage(page Page) (string, error) {
 			return "", err
 		}
 	case bodyFormatMarkdownXHTML:
+		if hasAnnotatedTextExtension(page.markdownExtensions) {
+			return "", fmt.Errorf("annotated-text-v1 is XHTML-only; it is not supported for flat-gemini-v1")
+		}
 		if err := ValidateMarkdownSource(body, page.bodyLine); err != nil {
 			return "", err
 		}

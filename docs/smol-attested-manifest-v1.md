@@ -14,6 +14,14 @@ allowed-origin list, or resource inventory. These fields describe signed
 publisher claims; unchanged signed copies can authenticate on other origins.
 `flat-gemini-v1` output does not emit the manifest.
 
+Manifest omission does not relax XHTML, static-resource, CSS, or ID validation,
+and it does not invalidate whole-page authentication. When the comment is
+present, `smol check` validates its wrapper, fields, profile and policy values,
+and declared known-region hashes. It does not verify a cryptographic signature.
+Without the comment there are no signed publisher origin, policy, or resource
+declarations to report; a verifier must not invent them. Static conformance of
+the actual document is a separate check from authenticating those declarations.
+
 ## Wrapper
 
 The comment wrapper is:

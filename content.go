@@ -14,15 +14,16 @@ import (
 )
 
 type ContentMeta struct {
-	Title        string     `json:"title"`
-	NavLabel     string     `json:"nav_label"`
-	Summary      string     `json:"summary"`
-	PublishedUTC string     `json:"published_utc"`
-	UpdatedUTC   string     `json:"updated_utc"`
-	Tags         []string   `json:"tags"`
-	Draft        bool       `json:"draft"`
-	TOC          bool       `json:"toc"`
-	Links        *PageLinks `json:"links,omitempty"`
+	Title              string     `json:"title"`
+	NavLabel           string     `json:"nav_label"`
+	Summary            string     `json:"summary"`
+	PublishedUTC       string     `json:"published_utc"`
+	UpdatedUTC         string     `json:"updated_utc"`
+	Tags               []string   `json:"tags"`
+	Draft              bool       `json:"draft"`
+	TOC                bool       `json:"toc"`
+	Links              *PageLinks `json:"links,omitempty"`
+	MarkdownExtensions []string   `json:"markdown_extensions,omitempty"`
 }
 
 type TOCEntry struct {
@@ -38,27 +39,28 @@ type PageLinks struct {
 }
 
 type Page struct {
-	Kind         string
-	Title        string
-	NavLabel     string
-	Slug         string
-	Summary      string
-	PublishedUTC string
-	UpdatedUTC   string
-	Tags         []string
-	URL          string
-	CanonicalURL string
-	ContentHTML  template.HTML
-	Draft        bool
-	BodyFormat   string
-	TOC          []TOCEntry
-	Links        PageLinks
-	Navigation   PageNavigation
-	contentDir   string
-	bodyPath     string
-	body         []byte
-	bodyLine     int
-	tocRequested bool
+	Kind               string
+	Title              string
+	NavLabel           string
+	Slug               string
+	Summary            string
+	PublishedUTC       string
+	UpdatedUTC         string
+	Tags               []string
+	URL                string
+	CanonicalURL       string
+	ContentHTML        template.HTML
+	Draft              bool
+	BodyFormat         string
+	TOC                []TOCEntry
+	Links              PageLinks
+	Navigation         PageNavigation
+	contentDir         string
+	bodyPath           string
+	body               []byte
+	bodyLine           int
+	tocRequested       bool
+	markdownExtensions []string
 }
 
 const (
@@ -204,24 +206,25 @@ func loadContentSource(site SiteConfig, kind, slug, sourcePath, contentDir strin
 	}
 	route := routeFor(kind, slug, site.routeStyle())
 	return Page{
-		Kind:         kind,
-		Title:        resolveContentTitle(meta.Title, slug),
-		NavLabel:     meta.NavLabel,
-		Slug:         slug,
-		Summary:      meta.Summary,
-		PublishedUTC: meta.PublishedUTC,
-		UpdatedUTC:   meta.UpdatedUTC,
-		Tags:         meta.Tags,
-		URL:          route,
-		CanonicalURL: canonicalURL(site.BaseURL, route),
-		Draft:        meta.Draft,
-		BodyFormat:   bodyFormat,
-		Links:        links,
-		contentDir:   contentDir,
-		bodyPath:     sourcePath,
-		body:         body,
-		bodyLine:     bodyLine,
-		tocRequested: meta.TOC,
+		Kind:               kind,
+		Title:              resolveContentTitle(meta.Title, slug),
+		NavLabel:           meta.NavLabel,
+		Slug:               slug,
+		Summary:            meta.Summary,
+		PublishedUTC:       meta.PublishedUTC,
+		UpdatedUTC:         meta.UpdatedUTC,
+		Tags:               meta.Tags,
+		URL:                route,
+		CanonicalURL:       canonicalURL(site.BaseURL, route),
+		Draft:              meta.Draft,
+		BodyFormat:         bodyFormat,
+		Links:              links,
+		contentDir:         contentDir,
+		bodyPath:           sourcePath,
+		body:               body,
+		bodyLine:           bodyLine,
+		tocRequested:       meta.TOC,
+		markdownExtensions: append([]string(nil), meta.MarkdownExtensions...),
 	}, nil
 }
 
@@ -239,6 +242,15 @@ func bodyFormatForExtension(ext string) string {
 }
 
 func validateContentMeta(meta ContentMeta, expectedKind, slug, bodyFormat, outputMode string) error {
+	if err := validateMarkdownExtensions(meta.MarkdownExtensions); err != nil {
+		return err
+	}
+	if len(meta.MarkdownExtensions) > 0 && bodyFormat != bodyFormatMarkdownXHTML {
+		return fmt.Errorf("markdown_extensions requires a markdown body")
+	}
+	if len(meta.MarkdownExtensions) > 0 && outputMode == outputModeFlatGemini {
+		return fmt.Errorf("annotated-text-v1 is XHTML-only; it is not supported for flat-gemini-v1")
+	}
 	if outputMode == outputModeFlatGemini && expectedKind != "page" {
 		return fmt.Errorf("%s supports only pages", outputMode)
 	}
@@ -441,6 +453,17 @@ var frontMatterParsers = map[string]frontMatterParser{
 			return index, err
 		}
 		state.meta.Tags = values
+		return next, nil
+	},
+	"markdown_extensions": func(state *frontMatterParseState, lines []frontMatterLine, index int, value string) (int, error) {
+		values, next, err := parseStringListValue(value, lines, index, lines[index].indent)
+		if err != nil {
+			return index, err
+		}
+		if err := validateMarkdownExtensions(values); err != nil {
+			return index, err
+		}
+		state.meta.MarkdownExtensions = values
 		return next, nil
 	},
 	"links": func(state *frontMatterParseState, lines []frontMatterLine, index int, value string) (int, error) {

@@ -222,6 +222,7 @@ grammar is:
 | Lists | Inline `[a, "b, c", 'd']` or block lists at/deeper than the key indentation. Quotes delimit inline items only when they start an item, so apostrophes inside bare items are literal. Empty inline list `[]` is valid; bare `tags:` with no items is rejected. Top-level block lists are flat. The first non-list line ends a block list. |
 | Links | `links` is a strict block map with `up`, `previous`, `next`, and `related`; those subkeys are not top-level keys and are not guarded inside unknown foreign blocks. |
 | Navigation label | Optional `nav_label` scalar names the page in other pages' generated navigation (`Up`/`Previous`/`Next`/`Related` links); when absent, the page title is used. The page's own `<h1>` and `<title>` always use `title`. |
+| Markdown extensions | Optional `markdown_extensions: [annotated-text-v1]` enables the closed annotated-text vocabulary below, for Markdown/XHTML output only. Empty `[]` keeps the default grammar. Unknown or duplicate names are errors. |
 | Dates | RFC3339 timestamps are accepted unchanged. Bare `YYYY-MM-DD` dates are normalized to midnight UTC. Empty date fields are treated as omitted. Other date formats are rejected. |
 | Table of contents | `toc: true` generates a table of contents from the page's level-2 Markdown headings, ATX or setext. Anchors are auto-derived (lowercase letters and digits, other runs become single hyphens; non-ASCII characters are dropped); an explicit `{#id}` on an ATX or setext heading overrides. Link and image markup in a collected heading contributes only its label to the entry text and anchor. With `toc: true` every heading anchor on the page must be unique and must not collide with footnote checkbox ids. Duplicate or underivable anchors are errors, as is `toc: true` with no level-2 headings, a non-Markdown body, or `flat-gemini-v1` output. |
 | Comments | Unsupported; `#` is literal text. |
@@ -290,7 +291,7 @@ code, ordered lists, unordered lists, static task-list items, blockquotes,
 simple pipe tables, fenced code blocks, horizontal rules, and literal numeric
 inline notes.
 
-Markdown bodies must be **pure Markdown with a YAML front-matter header** — no
+Markdown bodies must be **pure Markdown with optional small front matter** — no
 embedded HTML in any form. Two kinds of HTML are rejected at build time, each
 with a file and a 1-based line number:
 
@@ -311,6 +312,115 @@ with a file and a 1-based line number:
 Both checks ignore content inside fenced code blocks and inline code spans, so
 literal tags and entities can still be displayed as code. Standard CommonMark
 backslash escapes (`\*`, `1\.`) are Markdown rather than HTML and are permitted.
+
+### Opt-in annotated text
+
+The `annotated-text-v1` extension is intended for source texts whose printed
+annotations must remain distinct. Enable it explicitly per Markdown page:
+
+```md
+---
+title: Annotated text
+markdown_extensions: [annotated-text-v1]
+---
+
+{anchor|work.4.31}{chapter|4} {verse|31} {initial|A} supplied passage, with
+{u-dotted|another visibly distinct annotation}.{br}A new line.[^129]
+
+[^129]: First paragraph with *emphasis* and [a source](bibliography.html#entry-1).
+    A soft continuation of the first paragraph.
+
+    A second paragraph of the same note.
+```
+
+Without the opt-in, these brace forms remain ordinary text and existing Markdown
+rendering is unchanged. The extension adds exactly nine forms:
+
+| Form | XHTML result |
+| --- | --- |
+| `{u-solid|text}` | A span with the fixed `smol-u-solid` class. |
+| `{u-dotted|text}` | A span with the fixed `smol-u-dotted` class. |
+| `{sup|text}` | A `sup` element, distinct from a numeric footnote reference. |
+| `{anchor|ID}` | An empty span carrying a stable ID. |
+| `{br}` | A fixed `br` element. |
+| `{verse|31}` | A span with the fixed `smol-verse` class, for a printed baseline verse label. |
+| `{chapter|4}` | A span with the fixed `smol-chapter` class, for a printed chapter number. |
+| `{initial|A}` | A span with the fixed `smol-initial` class, for a printed enlarged initial. |
+| `{gap|. . .}` | A span with the fixed `smol-gap` class, grouping a printed ellipsis. |
+
+The vocabulary does not accept source-supplied styles, arbitrary classes,
+attributes, elements, includes, or executable templates. The existing raw HTML
+and character-entity bans still apply inside annotations and note definitions.
+Annotation syntax inside inline or fenced code remains literal. Existing
+backslash escapes include braces and pipe: `\{u-solid|literal\}` displays the
+brace form, while `\}` and `\|` preserve those characters inside an annotation.
+Pipe-table headers and cells may contain annotations, including nested forms.
+Pipes inside an annotation or inline code do not separate table cells; use
+`\|` for a literal pipe elsewhere in a cell.
+
+Annotations are balanced and bounded to 32 nested inline constructs. Their text
+may include existing emphasis and strong syntax. Solid and dotted spans can nest
+to preserve both printed layers; nesting the same underline kind twice is an
+error. Crossing source intervals must be split into properly nested runs. Empty
+zero-byte annotation bodies are errors, but whitespace-only underlining is valid
+and its whitespace is retained. Such underline spans additionally receive the
+fixed `smol-marked-space` class; the theme can preserve those spaces explicitly
+without imposing `pre-wrap` on ordinary text runs or their note descendants.
+The theme must supply fixed CSS for the underline classes,
+including visible offsets when both kinds are nested; the names describe printed
+appearance and do not assign an editorial interpretation.
+
+Superscript is literal source text with emphasis or code, not an automatically
+inferred verse or citation. It cannot contain another superscript, line breaks,
+anchors, links, images, or footnote controls. Numeric notes retain `[^N]` syntax
+and their literal numbering. Underlined text may contain a numeric note marker.
+
+The four source roles are explicit and do not infer or insert source characters.
+Verse labels remain baseline text rather than using the note-marker superscript
+style. A verse label begins with a digit and may contain ASCII letters, digits,
+dot, colon, hyphen and spaces; chapter labels contain decimal digits. An initial
+is exactly one Unicode letter, with no nested markup. A gap contains only printed
+periods, ellipsis characters and whitespace, including at least one period or
+ellipsis. Verse, chapter and gap bodies may include emphasis and underlining, so
+partial number/ellipsis underlines remain inside one grouped role. They cannot
+contain another source role, superscript, anchor, link, image, line break or note
+control. A source role can itself sit within an underline span. The theme owns
+the fixed role styling, including chapter/initial sizing and gap no-wrap behavior;
+the author cannot supply CSS values or arbitrary attributes.
+
+Anchor IDs contain only ASCII letters, digits, underscore, dot and hyphen, and
+must begin with a letter or digit. `cbN` (decimal digits), `top`, `content`,
+`toc_container` and `toc_title` are reserved. Inline anchors and explicit/derived
+heading anchors share duplicate detection, including when `toc` is disabled.
+Explicit heading `{#id}` syntax also accepts dots in this extension. Generated
+TOC entries use visible heading text rather than annotation syntax or anchor IDs.
+Final document validation additionally catches collisions with custom theme IDs.
+
+Numeric footnote definitions begin at column zero with `[^N]: ` and nonempty
+inline prose. A following line with four leading spaces continues the note.
+Blank lines followed by another four-space continuation separate its paragraphs;
+unindented content ends the definition. Note bodies accept inline prose, links,
+and the fixed annotation forms, but not images, nested notes, headings, lists,
+tables, quoted blocks, fenced blocks, or further block indentation. Definitions
+inside fenced code are never extracted. Missing, duplicate, unused, or repeated
+note references are errors; use an ordinary link to an explicit note-body anchor
+when a note must be mentioned again.
+
+The existing checkbox/label/note wrapper is retained. In annotated mode its note
+content span has the fixed `smol-note-body` class, so the theme can reset inherited
+heading/emphasis styles while preserving explicit child emphasis. Legacy notes
+without the extension remain byte-identical. For multiple paragraphs, that
+inner note span contains one fixed
+`smol-note-paragraph` span per paragraph, separated by literal blank lines. A
+theme can display these child spans as blocks with paragraph spacing. They
+remain valid phrasing content inside the inline note; the renderer never inserts
+`p` or `div` elements there. No extra attributes are added to checkbox inputs.
+
+`annotated-text-v1` is XHTML-only and is explicitly rejected for
+`flat-gemini-v1`, rather than silently dropping scholarly distinctions or note
+paragraphs. Existing Markdown-to-Gemini behavior without the extension is
+unchanged. The static output profile, allowlists, validators, resource rules,
+and signing model are unchanged.
 
 Task-list items render as static list text with checkbox glyphs, not form
 controls or JavaScript. Markdown links may use relative URLs, fragments,
