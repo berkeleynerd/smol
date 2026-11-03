@@ -49,8 +49,18 @@ func inspectPublishTree(outDir string) (publishTree, error) {
 }
 
 func makePublishPlan(outDir string, target publishTarget, inspect bool) (publishPlan, error) {
+	var random [12]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return publishPlan{}, err
+	}
+	nonce := hex.EncodeToString(random[:])
 	if target.Mode != publishModeInPlace {
-		return publishPlan{commands: publishCommands(outDir, target), stage: remoteStagePath(target.Path)}, nil
+		stage := remotePublishPath(target.Path, "upload", nonce)
+		backup := remotePublishPath(target.Path, "backup", nonce)
+		cleanup := publishCommand{Name: "ssh", Args: sshArgs(target),
+			Stdin: "set -eu\nrm -rf " + posixSingleQuote(stage) + "\n"}
+		return publishPlan{commands: publishCommands(outDir, target, stage, backup),
+			cleanup: &cleanup, stage: stage}, nil
 	}
 	var tree publishTree
 	var err error
@@ -63,11 +73,7 @@ func makePublishPlan(outDir string, target publishTarget, inspect bool) (publish
 			return publishPlan{}, fmt.Errorf("in-place publishing requires at least one output file")
 		}
 	}
-	var nonce [12]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		return publishPlan{}, err
-	}
-	stage := pathpkg.Join(target.Path, ".smol-upload-"+hex.EncodeToString(nonce[:]))
+	stage := pathpkg.Join(target.Path, ".smol-upload-"+nonce)
 	prepare := inPlaceDestinationChecks(target.Path, tree) +
 		"stage=" + posixSingleQuote(stage) + "\nmkdir -m 700 \"$stage\"\n"
 	commit := inPlaceDestinationChecks(target.Path, tree) +

@@ -315,21 +315,70 @@ func resolveOutputDir(siteDir, outDir string) string {
 }
 
 func validateForceOutputDir(siteDir, outDir string) error {
-	siteDir = filepath.Clean(siteDir)
-	outDir = filepath.Clean(outDir)
-	if pathWithinOrSame(outDir, siteDir) {
-		return fmt.Errorf("refusing to remove output directory that contains site directory: %s", outDir)
+	// Keep lexical guards as well as filesystem guards: neither a source alias
+	// nor a source directory redirected elsewhere should become build output.
+	if err := checkForceOutputPaths(filepath.Clean(siteDir), filepath.Clean(outDir)); err != nil {
+		return err
 	}
-	for _, sourceDir := range []string{
-		filepath.Join(siteDir, "content"),
-		filepath.Join(siteDir, "themes"),
-		filepath.Join(siteDir, ".git"),
-	} {
-		if pathWithinOrSame(sourceDir, outDir) {
+	realSite, err := resolveExistingAncestors(siteDir)
+	if err != nil {
+		return fmt.Errorf("resolve site directory: %w", err)
+	}
+	realOut, err := resolveExistingAncestors(outDir)
+	if err != nil {
+		return fmt.Errorf("resolve output directory: %w", err)
+	}
+	if err := checkForceOutputPaths(realSite, realOut); err != nil {
+		return err
+	}
+	for _, name := range []string{"content", "themes", ".git"} {
+		source, err := resolveExistingAncestors(filepath.Join(siteDir, name))
+		if err != nil {
+			return fmt.Errorf("resolve source directory: %w", err)
+		}
+		if pathWithinOrSame(source, realOut) || pathWithinOrSame(realOut, source) {
 			return fmt.Errorf("refusing to remove source directory as output: %s", outDir)
 		}
 	}
 	return nil
+}
+
+func checkForceOutputPaths(siteDir, outDir string) error {
+	if pathWithinOrSame(outDir, siteDir) {
+		return fmt.Errorf("refusing to remove output directory that contains site directory: %s", outDir)
+	}
+	for _, name := range []string{"content", "themes", ".git"} {
+		if pathWithinOrSame(filepath.Join(siteDir, name), outDir) {
+			return fmt.Errorf("refusing to remove source directory as output: %s", outDir)
+		}
+	}
+	return nil
+}
+
+// EvalSymlinks requires an existing final path. Walk back only across missing
+// components, resolve the existing prefix, then append the absent suffix. A
+// dangling symlink is an existing entry and must fail resolution, not be skipped.
+func resolveExistingAncestors(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	prefix, suffix := absolute, ""
+	for {
+		_, err := os.Lstat(prefix)
+		if err == nil {
+			resolved, err := filepath.EvalSymlinks(prefix)
+			if err != nil {
+				return "", err
+			}
+			return filepath.Join(resolved, suffix), nil
+		}
+		if !os.IsNotExist(err) || filepath.Dir(prefix) == prefix {
+			return "", err
+		}
+		suffix = filepath.Join(filepath.Base(prefix), suffix)
+		prefix = filepath.Dir(prefix)
+	}
 }
 
 func pathWithinOrSame(parent, child string) bool {

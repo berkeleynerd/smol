@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"os/exec"
 	pathpkg "path"
@@ -229,9 +230,12 @@ func PublishSite(opts PublishOptions) error {
 		verification = "set -eu\nstage=" + posixSingleQuote(plan.stage) + "\ntrap 'rm -rf \"$stage\"' EXIT\n" + verification
 	}
 	plan.commands[2].Stdin = verification + plan.commands[2].Stdin
-	for _, command := range plan.commands {
+	for index, command := range plan.commands {
 		if err := runner.Run(command); err != nil {
-			if plan.cleanup != nil {
+			// A failed swap preparation may mean mkdir found an existing stage.
+			// Ownership is established only after prepare succeeds. A lost setup
+			// connection can leave an orphan, but must not delete another upload.
+			if plan.cleanup != nil && (index > 0 || target.Mode == publishModeInPlace) {
 				_ = runner.Run(*plan.cleanup)
 			}
 			return err
@@ -295,6 +299,11 @@ func publishTargetFromConfig(cfg PublishConfig, opts PublishOptions) (publishTar
 	}
 	if err := validateSSHField("publish host", target.Host, true); err != nil {
 		return publishTarget{}, err
+	}
+	var hostErr error
+	target.Host, hostErr = normalizePublishHost(target.Host)
+	if hostErr != nil {
+		return publishTarget{}, hostErr
 	}
 	if err := validateSSHField("publish user", target.User, false); err != nil {
 		return publishTarget{}, err
@@ -373,9 +382,7 @@ func validatePublishOutputDir(outDir string) error {
 	return nil
 }
 
-func publishCommands(outDir string, target publishTarget) []publishCommand {
-	stage := remoteStagePath(target.Path)
-	backup := remoteBackupPath(target.Path)
+func publishCommands(outDir string, target publishTarget, stage, backup string) []publishCommand {
 	return []publishCommand{
 		{
 			Name:  "ssh",
@@ -417,16 +424,45 @@ func sshDestination(target publishTarget) string {
 	return target.User + "@" + target.Host
 }
 
+func normalizePublishHost(host string) (string, error) {
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+		address, err := netip.ParseAddr(host)
+		if err != nil || !address.Is6() {
+			return "", fmt.Errorf("publish host brackets require an IPv6 address")
+		}
+	}
+	if strings.ContainsAny(host, "[]") {
+		return "", fmt.Errorf("invalid publish host brackets; set port separately")
+	}
+	if strings.Contains(host, ":") {
+		address, err := netip.ParseAddr(host)
+		if err != nil || !address.Is6() {
+			return "", fmt.Errorf("invalid IPv6 publish host; set port separately")
+		}
+	}
+	return host, nil
+}
+
 func publishRemoteSpec(target publishTarget, remotePath string) string {
-	return sshDestination(target) + ":" + remotePath
+	// SCP uses the first unbracketed colon as its host/path separator. SSH and
+	// known_hosts use the normalized bare address (and a separate port option).
+	host := target.Host
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if target.User != "" {
+		host = target.User + "@" + host
+	}
+	return host + ":" + remotePath
 }
 
-func remoteStagePath(targetPath string) string {
-	return pathpkg.Join(pathpkg.Dir(targetPath), "."+pathpkg.Base(targetPath)+".smol-upload")
+func remotePublishPath(targetPath, kind, nonce string) string {
+	return pathpkg.Join(pathpkg.Dir(targetPath), "."+pathpkg.Base(targetPath)+".smol-"+kind+"-"+nonce)
 }
 
-func remoteBackupPath(targetPath string) string {
-	return pathpkg.Join(pathpkg.Dir(targetPath), "."+pathpkg.Base(targetPath)+".smol-backup")
+func remoteLockPath(targetPath string) string {
+	return pathpkg.Join(pathpkg.Dir(targetPath), "."+pathpkg.Base(targetPath)+".smol-lock")
 }
 
 func remotePrepareScript(targetPath, stagePath string) string {
@@ -435,8 +471,8 @@ func remotePrepareScript(targetPath, stagePath string) string {
 		"parent=" + posixSingleQuote(pathpkg.Dir(targetPath)),
 		"stage=" + posixSingleQuote(stagePath),
 		"mkdir -p \"$parent\"",
-		"rm -rf \"$stage\"",
-		"mkdir -p \"$stage\"",
+		// A unique stage must be new. Never remove another upload on collision.
+		"mkdir -m 700 \"$stage\"",
 		"",
 	}, "\n")
 }
@@ -447,18 +483,37 @@ func remoteSwapScript(targetPath, stagePath, backupPath string) string {
 		"target=" + posixSingleQuote(targetPath),
 		"stage=" + posixSingleQuote(stagePath),
 		"backup=" + posixSingleQuote(backupPath),
-		"rm -rf \"$backup\"",
-		"if [ -e \"$target\" ] || [ -L \"$target\" ]; then",
-		"  mv \"$target\" \"$backup\"",
+		"lock=" + posixSingleQuote(remoteLockPath(targetPath)),
+		`if ! mkdir -m 700 "$lock"; then`,
+		`  echo "Another publication holds $lock; retry after it finishes" >&2; exit 1`,
 		"fi",
-		"if mv \"$stage\" \"$target\"; then",
-		"  rm -rf \"$backup\"",
+		"backed_up=false",
+		"cleanup_swap() {",
+		"  status=$?",
+		"  trap - EXIT HUP INT TERM",
+		`  if [ "$backed_up" = true ] && [ ! -e "$target" ] && [ ! -L "$target" ]; then`,
+		`    if ! mv "$backup" "$target"; then`,
+		`      echo "Rollback failed; previous publication retained at $backup" >&2; status=1`,
+		"    fi",
+		"  fi",
+		`  rm -rf "$stage" || status=1`,
+		`  rmdir "$lock" || status=1`,
+		`  exit "$status"`,
+		"}",
+		"trap cleanup_swap EXIT",
+		"trap 'exit 129' HUP",
+		"trap 'exit 130' INT",
+		"trap 'exit 143' TERM",
+		`[ ! -e "$backup" ] && [ ! -L "$backup" ] || { echo 'Backup path already exists' >&2; exit 1; }`,
+		`if [ -e "$target" ] || [ -L "$target" ]; then`,
+		"  backed_up=true",
+		`  mv "$target" "$backup"`,
+		"fi",
+		`if mv "$stage" "$target"; then`,
+		`  rm -rf "$backup"`,
 		"else",
 		"  status=$?",
-		"  if [ -e \"$backup\" ] || [ -L \"$backup\" ]; then",
-		"    mv \"$backup\" \"$target\"",
-		"  fi",
-		"  exit \"$status\"",
+		`  exit "$status"`,
 		"fi",
 		"",
 	}, "\n")

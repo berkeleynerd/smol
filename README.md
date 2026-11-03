@@ -559,6 +559,10 @@ Unsigned HTML remains available for local previews; `--unsigned` cannot publish
 HTML. `--no-build` verifies existing pages against the configured fingerprint;
 it cannot run signing or accept `--sign` / `--sign-key`.
 
+Forced builds (including publication's build step) reject output that contains
+the site or overlaps its content, themes or Git data. These checks resolve
+existing directory aliases, including ancestors of an output not yet created.
+
 The default publish builds finalized pages, makes a private output snapshot,
 and validates every page's XML, static-resource policy, and embedded OpenPGP
 signature with `attest verify --trusted FINGERPRINT`. Each gzip sibling must
@@ -570,7 +574,18 @@ OpenBSD `sha256`, or `shasum`. Extra files or directories fail the check.
 A failed check leaves the live site in place.
 
 The default `publish.mode` is `"swap"`: the destination directory is replaced,
-which requires write access to its parent. Use `"mode": "in-place"` or
+which requires write access to its parent. Each publication has a unique staging
+and backup directory. A target-specific `.NAME.smol-lock` directory serializes
+activation and rollback; an overlapping activation fails without changing the
+live target, and can be retried after the active publication finishes. A failed
+activation restores the previous target where possible and retains its uniquely
+named backup if restoration fails. Transfer/check failures clean only their own
+staging. A lost setup connection may leave an orphan stage; a killed remote
+process or host crash may leave a lock or backup. Inspect those paths and confirm
+no publisher is active before recovering them; locks are never stolen based on
+their age.
+
+Use `"mode": "in-place"` or
 `--mode in-place` when only the existing web root is writable. That mode stages
 inside the web root, applies the same exact inventory/hash gate to the upload,
 then replaces files individually by rename. It never renames or chmods the web
@@ -579,6 +594,11 @@ verified snapshot. Replacements are individually atomic; the entire update is
 not, so readers can briefly see old and new pages together. Failed transfers or
 verification leave existing pages in place; an installation failure can leave a
 partially updated site. Unique staging cleanup is attempted on failure.
+
+IPv6 hosts can be supplied as `2001:db8::1` or `[2001:db8::1]`; set the port with
+`publish.port` or `--port`. SSH uses the bare address and SCP brackets it. A pinned
+known-hosts entry uses the bare address for port 22 or `[2001:db8::1]:2222` for a
+nondefault port, matching OpenSSH.
 
 `--check-ssh` checks existing output paths, SSH access, and destination permissions
 without building, uploading, or creating staging directories. It does not certify

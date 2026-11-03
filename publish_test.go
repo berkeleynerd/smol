@@ -117,14 +117,14 @@ func TestPublishNoBuildRunsExpectedSSHAndSCPCommands(t *testing.T) {
 	if runner.commands[0].Name != "ssh" || strings.Join(runner.commands[0].Args, " ") != "-p 2222 deploy@example.org sh -s" {
 		t.Fatalf("prepare command = %#v", runner.commands[0])
 	}
-	if !strings.Contains(runner.commands[0].Stdin, "mkdir -p \"$stage\"") || !strings.Contains(runner.commands[0].Stdin, "/var/www/.example.smol-upload") {
+	if !strings.Contains(runner.commands[0].Stdin, "mkdir -m 700 \"$stage\"") || !strings.Contains(runner.commands[0].Stdin, "/var/www/.example.smol-upload") {
 		t.Fatalf("prepare script = %q", runner.commands[0].Stdin)
 	}
 	scp := runner.commands[1]
 	if scp.Name != "scp" || len(scp.Args) != 5 || scp.Args[0] != "-P" || scp.Args[1] != "2222" || scp.Args[2] != "-r" {
 		t.Fatalf("scp command = %#v", scp)
 	}
-	if scp.Args[3] == filepath.Join(dir, "public")+string(filepath.Separator)+"." || !strings.HasSuffix(scp.Args[3], string(filepath.Separator)+".") || scp.Args[4] != "deploy@example.org:/var/www/.example.smol-upload" {
+	if scp.Args[3] == filepath.Join(dir, "public")+string(filepath.Separator)+"." || !strings.HasSuffix(scp.Args[3], string(filepath.Separator)+".") || !strings.HasPrefix(scp.Args[4], "deploy@example.org:/var/www/.example.smol-upload-") {
 		t.Fatalf("scp args = %#v", scp.Args)
 	}
 	if runner.commands[2].Name != "ssh" || !strings.Contains(runner.commands[2].Stdin, "mv \"$stage\" \"$target\"") || !strings.Contains(runner.commands[2].Stdin, "/var/www/.example.smol-backup") {
